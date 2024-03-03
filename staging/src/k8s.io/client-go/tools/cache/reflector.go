@@ -325,9 +325,11 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 	klog.V(3).Infof("Listing and watching %v from %s", r.typeDescription, r.name)
 	var err error
 	var w watch.Interface
+	// 两种list方式只能选择其中一种
 	fallbackToList := !r.UseWatchList
 
 	if r.UseWatchList {
+		// 为了缓解内存压力，使用watch-cache获取list
 		w, err = r.watchList(stopCh)
 		if w == nil && err == nil {
 			// stopCh was closed
@@ -353,6 +355,7 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 	resyncerrc := make(chan error, 1)
 	cancelCh := make(chan struct{})
 	defer close(cancelCh)
+	// 更新DetailFIFO
 	go r.startResync(stopCh, cancelCh, resyncerrc)
 	return r.watch(w, stopCh, resyncerrc)
 }
@@ -419,6 +422,7 @@ func (r *Reflector) watch(w watch.Interface, stopCh <-chan struct{}, resyncerrc 
 				AllowWatchBookmarks: true,
 			}
 
+			// watch指定RV获取watch interface
 			w, err = r.listerWatcher.Watch(options)
 			if err != nil {
 				if canRetry := isWatchErrorRetriable(err); canRetry {
@@ -434,6 +438,8 @@ func (r *Reflector) watch(w watch.Interface, stopCh <-chan struct{}, resyncerrc 
 			}
 		}
 
+		// 通过clientSet客户端与API Server交互
+		// 处理watch事件
 		err = watchHandler(start, w, r.store, r.expectedType, r.expectedGVK, r.name, r.typeDescription, r.setLastSyncResourceVersion, nil, r.clock, resyncerrc, stopCh)
 		// Ensure that watch will not be reused across iterations.
 		w.Stop()
@@ -469,6 +475,7 @@ func (r *Reflector) watch(w watch.Interface, stopCh <-chan struct{}, resyncerrc 
 
 // list simply lists all items and records a resource version obtained from the server at the moment of the call.
 // the resource version can be used for further progress notification (aka. watch).
+// resource version可以用来通知watch下一操作
 func (r *Reflector) list(stopCh <-chan struct{}) error {
 	var resourceVersion string
 	options := metav1.ListOptions{ResourceVersion: r.relistResourceVersion()}
@@ -488,6 +495,7 @@ func (r *Reflector) list(stopCh <-chan struct{}) error {
 		}()
 		// Attempt to gather list in chunks, if supported by listerWatcher, if not, the first
 		// list request will return the full response.
+		// 创建etcd分页
 		pager := pager.New(pager.SimplePageFunc(func(opts metav1.ListOptions) (runtime.Object, error) {
 			return r.listerWatcher.List(opts)
 		}))
@@ -514,6 +522,7 @@ func (r *Reflector) list(stopCh <-chan struct{}) error {
 			pager.PageSize = 0
 		}
 
+		// 从etcd获取资源数据
 		list, paginatedResult, err = pager.ListWithAlloc(context.Background(), options)
 		if isExpiredError(err) || isTooLargeResourceVersionError(err) {
 			r.setIsLastSyncResourceVersionUnavailable(true)
@@ -559,17 +568,21 @@ func (r *Reflector) list(stopCh <-chan struct{}) error {
 	if err != nil {
 		return fmt.Errorf("unable to understand list result %#v: %v", list, err)
 	}
+	// 获取资源版本
 	resourceVersion = listMetaInterface.GetResourceVersion()
 	initTrace.Step("Resource version extracted")
+	// 将资源数据转换为资源对象列表
 	items, err := meta.ExtractListWithAlloc(list)
 	if err != nil {
 		return fmt.Errorf("unable to understand list result %#v (%v)", list, err)
 	}
 	initTrace.Step("Objects extracted")
+	// 将资源对象列表中的资源对象和资源版本存入DetailFIFO
 	if err := r.syncWith(items, resourceVersion); err != nil {
 		return fmt.Errorf("unable to sync list result: %v", err)
 	}
 	initTrace.Step("SyncWith done")
+	// 更新资源版本
 	r.setLastSyncResourceVersion(resourceVersion)
 	initTrace.Step("Resource version updated")
 	return nil
@@ -602,6 +615,8 @@ func (r *Reflector) watchList(stopCh <-chan struct{}) (watch.Interface, error) {
 	// TODO(#115478): see if this function could be turned
 	//  into a method and see if error handling
 	//  could be unified with the r.watch method
+	// 检查错误是否可以被恢复
+	// 只有在err为ConnectionRefused、TooManyRequests、Expired、TooLargeResourceVersion时，才返回true
 	isErrorRetriableWithSideEffectsFn := func(err error) bool {
 		if canRetry := isWatchErrorRetriable(err); canRetry {
 			klog.V(2).Infof("%s: watch-list of %v returned %v - backing off", r.name, r.typeDescription, err)
@@ -629,7 +644,9 @@ func (r *Reflector) watchList(stopCh <-chan struct{}) (watch.Interface, error) {
 		}
 
 		resourceVersion = ""
+		// 重新获取最新的资源版本
 		lastKnownRV := r.rewatchResourceVersion()
+		// 调用MetaNamespaceKeyFunc之前，检查obj是否为未知状态
 		temporaryStore = NewStore(DeletionHandlingMetaNamespaceKeyFunc)
 		// TODO(#115478): large "list", slow clients, slow network, p&f
 		//  might slow down streaming and eventually fail.
@@ -644,6 +661,7 @@ func (r *Reflector) watchList(stopCh <-chan struct{}) (watch.Interface, error) {
 		}
 		start := r.clock.Now()
 
+		// watch指定的资源版本
 		w, err = r.listerWatcher.Watch(options)
 		if err != nil {
 			if isErrorRetriableWithSideEffectsFn(err) {
@@ -652,6 +670,7 @@ func (r *Reflector) watchList(stopCh <-chan struct{}) (watch.Interface, error) {
 			return nil, err
 		}
 		bookmarkReceived := pointer.Bool(false)
+		// watch w interface，并更新resource version
 		err = watchHandler(start, w, temporaryStore, r.expectedType, r.expectedGVK, r.name, r.typeDescription,
 			func(rv string) { resourceVersion = rv },
 			bookmarkReceived,
@@ -750,7 +769,9 @@ loop:
 				utilruntime.HandleError(fmt.Errorf("%s: unable to understand watch event %#v", name, event))
 				continue
 			}
+			// 获取资源版本信息
 			resourceVersion := meta.GetResourceVersion()
+			// 根据不同事件进行不同的操作
 			switch event.Type {
 			case watch.Added:
 				err := store.Add(event.Object)
@@ -780,8 +801,10 @@ loop:
 			default:
 				utilruntime.HandleError(fmt.Errorf("%s: unable to understand watch event %#v", name, event))
 			}
+			// 设置最新的版本信息
 			setLastSyncResourceVersion(resourceVersion)
 			if rvu, ok := store.(ResourceVersionUpdater); ok {
+				// 更新资源版本
 				rvu.UpdateResourceVersion(resourceVersion)
 			}
 			eventCount++
@@ -842,6 +865,7 @@ func (r *Reflector) relistResourceVersion() string {
 func (r *Reflector) rewatchResourceVersion() string {
 	r.lastSyncResourceVersionMutex.RLock()
 	defer r.lastSyncResourceVersionMutex.RUnlock()
+	// 如果最新的版本不可用，则返回空字符串
 	if r.isLastSyncResourceVersionUnavailable {
 		// initial stream should return data at the most recent resource version.
 		// the returned data must be consistent i.e. as if served from etcd via a quorum read

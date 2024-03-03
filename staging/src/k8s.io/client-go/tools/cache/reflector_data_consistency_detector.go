@@ -82,6 +82,7 @@ func checkWatchListConsistency(stopCh <-chan struct{}, identity string, lastSync
 		return
 	}
 
+	// 转换资源数据转换为资源对象列表
 	rawListItems, err := meta.ExtractListWithAlloc(list)
 	if err != nil {
 		panic(err) // this should never happen
@@ -90,9 +91,11 @@ func checkWatchListConsistency(stopCh <-chan struct{}, identity string, lastSync
 	listItems := toMetaObjectSliceOrDie(rawListItems)
 	storeItems := toMetaObjectSliceOrDie(store.List())
 
+	// 对转换后的资源列表排序
 	sort.Sort(byUID(listItems))
 	sort.Sort(byUID(storeItems))
 
+	// 检查list的一致性
 	if !cmp.Equal(listItems, storeItems) {
 		klog.Infof("%s: data received by the new watch-list api call is different than received by the standard list api call, diff: %v", identity, cmp.Diff(listItems, storeItems))
 		msg := "data inconsistency detected for the watch-list feature, panicking!"
