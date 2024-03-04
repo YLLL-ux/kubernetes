@@ -427,6 +427,7 @@ func isDup(a, b *Delta) *Delta {
 
 // keep the one with the most information if both are deletions.
 func isDeletionDup(a, b *Delta) *Delta {
+	// 如果indexer的资源已经被删除，则直接返回
 	if b.Type != Deleted || a.Type != Deleted {
 		return nil
 	}
@@ -439,7 +440,9 @@ func isDeletionDup(a, b *Delta) *Delta {
 
 // queueActionLocked appends to the delta list for the object.
 // Caller must lock first.
+// 生产者方法
 func (f *DeltaFIFO) queueActionLocked(actionType DeltaType, obj interface{}) error {
+	// 获取obj的key
 	id, err := f.KeyOf(obj)
 	if err != nil {
 		return KeyError{obj, err}
@@ -461,6 +464,7 @@ func (f *DeltaFIFO) queueActionLocked(actionType DeltaType, obj interface{}) err
 
 	oldDeltas := f.items[id]
 	newDeltas := append(oldDeltas, Delta{actionType, obj})
+	// 删除重读信息
 	newDeltas = dedupDeltas(newDeltas)
 
 	if len(newDeltas) > 0 {
@@ -468,6 +472,7 @@ func (f *DeltaFIFO) queueActionLocked(actionType DeltaType, obj interface{}) err
 			f.queue = append(f.queue, id)
 		}
 		f.items[id] = newDeltas
+		// 告知所有消费者解除阻塞
 		f.cond.Broadcast()
 	} else {
 		// This never happens, because dedupDeltas never returns an empty list
@@ -560,6 +565,7 @@ func (f *DeltaFIFO) IsClosed() bool {
 //
 // Pop returns a 'Deltas', which has a complete list of all the things
 // that happened to the object (deltas) while it was sitting in the queue.
+// 消费者方法
 func (f *DeltaFIFO) Pop(process PopProcessFunc) (interface{}, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
