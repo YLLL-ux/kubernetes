@@ -634,6 +634,7 @@ func (s *sharedIndexInformer) HandleDeltas(obj interface{}, isInInitialList bool
 	defer s.blockDeltas.Unlock()
 
 	if deltas, ok := obj.(Deltas); ok {
+		// 处理回调事件
 		return processDeltas(s, s.indexer, deltas, isInInitialList)
 	}
 	return errors.New("object given as Process argument is not Deltas")
@@ -666,6 +667,7 @@ func (s *sharedIndexInformer) OnUpdate(old, new interface{}) {
 	// Invocation of this function is locked under s.blockDeltas, so it is
 	// save to distribute the notification
 	s.cacheMutationDetector.AddObject(new)
+	// 分发
 	s.processor.distribute(updateNotification{oldObj: old, newObj: new}, isSync)
 }
 
@@ -770,6 +772,7 @@ func (p *sharedProcessor) removeListener(handle ResourceEventHandlerRegistration
 	return nil
 }
 
+// distribute 分发sharedInformer
 func (p *sharedProcessor) distribute(obj interface{}, sync bool) {
 	p.listenersLock.RLock()
 	defer p.listenersLock.RUnlock()

@@ -101,15 +101,19 @@ type DeltaFIFOOptions struct {
 type DeltaFIFO struct {
 	// lock/cond protects access to 'items' and 'queue'.
 	lock sync.RWMutex
+	// 它表示一个条件变量。它的作用是在多个协程之间进行条件同步，使得某个或多个协程在特定条件满足时得到通知，
+	// 从而继续执行。sync.Cond通常与互斥锁（sync.Mutex）或读写锁（sync.RWMutex）一起使用。
 	cond sync.Cond
 
 	// `items` maps a key to a Deltas.
 	// Each such Deltas has at least one Delta.
+	// eg: {"objKey1":["Added":obj1,"Updated":obj1],"objKey2":["Added":obj2,"Deleted":obj1,"Sync":obj2]}
 	items map[string]Deltas
 
 	// `queue` maintains FIFO order of keys for consumption in Pop().
 	// There are no duplicates in `queue`.
 	// A key is in `queue` if and only if it is in `items`.
+	// eg: ["objKey1","objKey2"]
 	queue []string
 
 	// populated is true if the first batch of items inserted by Replace() has been populated
@@ -581,8 +585,11 @@ func (f *DeltaFIFO) Pop(process PopProcessFunc) (interface{}, error) {
 			f.cond.Wait()
 		}
 		isInInitialList := !f.hasSynced_locked()
-		id := f.queue[0]
-		f.queue = f.queue[1:]
+
+		// 每次读取队列的第一个参数
+		id := f.queue[0]      // 取第一个入队的objKey
+		f.queue = f.queue[1:] // 将队列的参数前移
+
 		depth := len(f.queue)
 		if f.initialPopulationCount > 0 {
 			f.initialPopulationCount--
@@ -606,8 +613,10 @@ func (f *DeltaFIFO) Pop(process PopProcessFunc) (interface{}, error) {
 				utiltrace.Field{Key: "Reason", Value: "slow event handlers blocking the queue"})
 			defer trace.LogIfLong(100 * time.Millisecond)
 		}
+		// 处理对象的回调方法
 		err := process(item, isInInitialList)
 		if e, ok := err.(ErrRequeue); ok {
+			// 回去回调失败，则重新入队
 			f.addIfNotPresent(id, item)
 			err = e.Err
 		}
