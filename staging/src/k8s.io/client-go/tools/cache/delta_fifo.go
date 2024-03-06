@@ -727,6 +727,8 @@ func (f *DeltaFIFO) Resync() error {
 		return nil
 	}
 
+	// f.knownObjects是Indexer本地存储对象
+	// 获取以存储的资源对象的keyList
 	keys := f.knownObjects.ListKeys()
 	for _, k := range keys {
 		if err := f.syncKeyLocked(k); err != nil {
@@ -737,6 +739,7 @@ func (f *DeltaFIFO) Resync() error {
 }
 
 func (f *DeltaFIFO) syncKeyLocked(key string) error {
+	// 可以获取client-go目前存储的所有资源对象
 	obj, exists, err := f.knownObjects.GetByKey(key)
 	if err != nil {
 		klog.Errorf("Unexpected error %v during lookup of key %v, unable to queue object for sync", err, key)
@@ -758,6 +761,7 @@ func (f *DeltaFIFO) syncKeyLocked(key string) error {
 		return nil
 	}
 
+	// 将Indexer本地存储中的资源对象同步到DeltaFIFO中,并将这些资源对象设置为Sync的操作类型
 	if err := f.queueActionLocked(Sync, obj); err != nil {
 		return fmt.Errorf("couldn't queue object: %v", err)
 	}
