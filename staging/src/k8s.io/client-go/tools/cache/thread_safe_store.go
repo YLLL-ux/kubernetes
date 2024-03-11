@@ -18,6 +18,7 @@ package cache
 
 import (
 	"fmt"
+	"k8s.io/klog/v2"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -103,12 +104,16 @@ func (i *storeIndex) getKeysFromIndex(indexName string, obj interface{}) (sets.S
 }
 
 func (i *storeIndex) getKeysByIndex(indexName, indexedValue string) (sets.String, error) {
+	// 找出指定的索引器函数
 	indexFunc := i.indexers[indexName]
 	if indexFunc == nil {
 		return nil, fmt.Errorf("Index with name %s does not exist", indexName)
 	}
 
+	// 找出缓存器函数
 	index := i.indices[indexName]
+	klog.Infof("get key by index: %s\n", index)
+	// 返回缓存器函数key为indexedValue的值
 	return index[indexedValue], nil
 }
 
@@ -206,8 +211,11 @@ func (i *storeIndex) deleteKeyFromIndex(key, indexValue string, index Index) {
 }
 
 // threadSafeMap implements ThreadSafeStore
+// 实现并发安全的存储
+// 内存中的存储，数据不会写入本地磁盘
 type threadSafeMap struct {
-	lock  sync.RWMutex
+	lock sync.RWMutex
+	// key使用MetaNamespaceKeyFunc函数计算获得，value资源对象
 	items map[string]interface{}
 
 	// index implements the indexing functionality
@@ -305,9 +313,11 @@ func (c *threadSafeMap) ByIndex(indexName, indexedValue string) ([]interface{}, 
 	}
 	list := make([]interface{}, 0, set.Len())
 	for key := range set {
+		klog.Infof("key is: %s, c.items[key] is: %s\n", key, c.items[key])
 		list = append(list, c.items[key])
 	}
 
+	// 返回资源对象list
 	return list, nil
 }
 

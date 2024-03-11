@@ -287,6 +287,8 @@ func NewStore(keyFunc KeyFunc) Store {
 }
 
 // NewIndexer returns an Indexer implemented simply with a map and a lock.
+// KeyFunc: 用于计算资源对象的key，默认使用MetaNamespaceKeyFunc
+// Indexers: 用于定义索引器
 func NewIndexer(keyFunc KeyFunc, indexers Indexers) Indexer {
 	return &cache{
 		cacheStorage: NewThreadSafeStore(indexers, Indices{}),

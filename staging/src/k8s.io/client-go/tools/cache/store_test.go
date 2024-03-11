@@ -18,6 +18,10 @@ package cache
 
 import (
 	"errors"
+	"fmt"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -168,5 +172,59 @@ func TestKeyError(t *testing.T) {
 	nestedKeyErr := KeyError{obj, keyErr}
 	if !errors.Is(keyErr, err) || !errors.Is(nestedKeyErr, err) {
 		t.Errorf("not match target error: %v", err)
+	}
+}
+
+// phil
+func UsersIndexFunc(obj interface{}) ([]string, error) {
+	pod := obj.(*v1.Pod)
+	usersString := pod.Annotations["users"]
+
+	// 获取key为users的Annotations，并用","进行分割
+	return strings.Split(usersString, ","), nil
+}
+
+func TestNewIndexer(t *testing.T) {
+	indexer := NewIndexer(MetaNamespaceKeyFunc, Indexers{"by_users": UsersIndexFunc})
+
+	pod1 := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "one",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"users": "ernie,bert",
+			},
+		},
+	}
+	pod2 := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tow",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"users": "bert",
+			},
+		},
+	}
+	pod3 := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "three",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"users": "ernie,bert",
+			},
+		},
+	}
+
+	indexer.Add(pod1)
+	indexer.Add(pod2)
+	indexer.Add(pod3)
+
+	erniePods, err := indexer.ByIndex("by_users", "ernie")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	for _, pod := range erniePods {
+		fmt.Println(pod.(*v1.Pod).Name)
 	}
 }

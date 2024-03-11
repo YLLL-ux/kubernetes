@@ -26,11 +26,14 @@ import (
 
 type RateLimiter interface {
 	// When gets an item and gets to decide how long that item should wait
+	// 获取指定元素应该等待的时间
 	When(item interface{}) time.Duration
 	// Forget indicates that an item is finished being retried.  Doesn't matter whether it's for failing
 	// or for success, we'll stop tracking it
+	// 释放指定元素，释放该元素的排队数
 	Forget(item interface{})
 	// NumRequeues returns back how many failures the item has had
+	// 获取指定元素的排队数
 	NumRequeues(item interface{}) int
 }
 

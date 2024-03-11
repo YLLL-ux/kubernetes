@@ -23,13 +23,21 @@ import (
 	"k8s.io/utils/clock"
 )
 
+// Interface FIFO队列
 type Interface interface {
+	// Add 给队列添加元素
 	Add(item interface{})
+	// Len 返回队列长度
 	Len() int
+	// Get 获取队列头部的一个元素
 	Get() (item interface{}, shutdown bool)
+	// Done 标记队列中该元素已被处理
 	Done(item interface{})
+	// ShutDown 关闭队列
 	ShutDown()
+	// ShutDownWithDrain 用Drain方式关闭队列
 	ShutDownWithDrain()
+	// ShuttingDown 查询队列是否正在关闭
 	ShuttingDown() bool
 }
 
@@ -116,15 +124,19 @@ type Type struct {
 	// queue defines the order in which we will work on items. Every
 	// element of queue should be in the dirty set and not in the
 	// processing set.
+	// 实际存储的地方
 	queue []t
 
 	// dirty defines all of the items that need to be processed.
+	// 1.保证去重
+	// 2.保证一个元素只会被处理一次
 	dirty set
 
 	// Things that are currently being processed are in the processing set.
 	// These things may be simultaneously in the dirty set. When we finish
 	// processing something and remove it from this set, we'll check if
 	// it's in the dirty set, and if so, add it to the queue.
+	// 用于标记一个元素是否正在被处理
 	processing set
 
 	cond *sync.Cond

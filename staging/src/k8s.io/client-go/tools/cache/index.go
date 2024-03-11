@@ -32,6 +32,8 @@ import (
 //  2. a name of an index, and
 //  3. an "indexed value", which is produced by an IndexFunc and
 //     can be a field value or any other string computed from the object.
+//
+// 存储索引器，key为索引器名称，value为索引器的视线函数
 type Indexer interface {
 	Store
 	// Index returns the stored objects whose set of indexed values
@@ -56,6 +58,7 @@ type Indexer interface {
 }
 
 // IndexFunc knows how to compute the set of indexed values for an object.
+// 索引器函数，定义为接收一个资源对象，返回检查结果列表
 type IndexFunc func(obj interface{}) ([]string, error)
 
 // IndexFuncToKeyFuncAdapter adapts an indexFunc to a keyFunc.  This is only useful if your index function returns
@@ -92,10 +95,14 @@ func MetaNamespaceIndexFunc(obj interface{}) ([]string, error) {
 }
 
 // Index maps the indexed value to a set of keys in the store that match on that value
+// 存储缓存数据
+// TestNewIndexer示例中，bert:map[default/one:{} default/three:{} default/tow:{}] ernie:map[default/one:{} default/three:{}]
 type Index map[string]sets.String
 
 // Indexers maps a name to an IndexFunc
 type Indexers map[string]IndexFunc
 
 // Indices maps a name to an Index
+// 存储缓存器
+// key为缓存器名称,value为缓存数据
 type Indices map[string]Index

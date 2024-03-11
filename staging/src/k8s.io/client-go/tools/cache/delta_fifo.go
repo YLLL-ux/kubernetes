@@ -739,7 +739,8 @@ func (f *DeltaFIFO) Resync() error {
 }
 
 func (f *DeltaFIFO) syncKeyLocked(key string) error {
-	// 可以获取client-go目前存储的所有资源对象
+	// Indexer本地存储对象，可以获取client-go目前存储的所有资源对象
+	// Indexer对象是在NewDetailFIFO函数实例化DetailFIFO对象时传入的
 	obj, exists, err := f.knownObjects.GetByKey(key)
 	if err != nil {
 		klog.Errorf("Unexpected error %v during lookup of key %v, unable to queue object for sync", err, key)
