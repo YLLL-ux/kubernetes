@@ -91,6 +91,9 @@ type ContentValidator interface {
 }
 
 // Visitor lets clients walk a list of resources.
+// 使用kubectl create -f deploy.yaml创建资源，Visitor多层VisitorFunc的关系：
+// EagerVisitorList{FileVisitor{StreamVisitor{FlattenListVisitor{FlattenListVisitor{ContinueOnErrorVisitor{DecoratedVisitor{result.Visit{}}}}}}}}
+// 退出Visitor时，会从内到外依次退出
 type Visitor interface {
 	Visit(VisitorFunc) error
 }
@@ -100,4 +103,5 @@ type Visitor interface {
 // will describe the problem and the function can decide how to handle that error.
 // A nil returned indicates to accept an error to continue loops even when errors happen.
 // This is useful for ignoring certain kinds of errors or aggregating errors in some way.
+// Info 结构用于存储RESTClient请求的返回结果, VisitorFunc生成或处理Info结构
 type VisitorFunc func(*Info, error) error
