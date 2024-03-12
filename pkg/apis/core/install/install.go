@@ -32,7 +32,10 @@ func init() {
 
 // Install registers the API group and adds types to a scheme
 func Install(scheme *runtime.Scheme) {
+	// 注册core资源组内部版本的资源（例：apps/_internal/）
 	utilruntime.Must(core.AddToScheme(scheme))
+	// 注册core资源组外部版本的资源（例：apps/{v1,v1beta1,v1beta2}）
 	utilruntime.Must(v1.AddToScheme(scheme))
+	// 注册资源组的版本顺序（如果有多个版本，排在对前面的为资源首选版本）
 	utilruntime.Must(scheme.SetVersionPriority(v1.SchemeGroupVersion))
 }

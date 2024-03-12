@@ -51,7 +51,9 @@ import (
 )
 
 var (
+	// Scheme 定义scheme资源注册表
 	Scheme = runtime.NewScheme()
+	// Codecs 定义编解码器
 	Codecs = serializer.NewCodecFactory(Scheme)
 
 	// if you modify this, make sure you update the crEncoder
@@ -67,6 +69,7 @@ var (
 )
 
 func init() {
+	// 进行资源注册
 	install.Install(Scheme)
 
 	// we need to add the options to empty v1

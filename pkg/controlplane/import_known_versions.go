@@ -18,6 +18,7 @@ package controlplane
 
 import (
 	// These imports are the API groups the API server will support.
+	// 注册kubernetes所需的资源
 	_ "k8s.io/kubernetes/pkg/apis/admission/install"
 	_ "k8s.io/kubernetes/pkg/apis/admissionregistration/install"
 	_ "k8s.io/kubernetes/pkg/apis/apiserverinternal/install"

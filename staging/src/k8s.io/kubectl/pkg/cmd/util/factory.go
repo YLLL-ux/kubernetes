@@ -52,6 +52,7 @@ type Factory interface {
 
 	// NewBuilder returns an object that assists in loading objects from both disk and the server
 	// and which implements the common patterns for CLI interactions with generic resources.
+	// 用于将命令行获取的参数转换为资源对象
 	NewBuilder() *resource.Builder
 
 	// Returns a RESTClient for working with the specified RESTMapping or an error. This is intended
@@ -61,6 +62,7 @@ type Factory interface {
 	UnstructuredClientForMapping(mapping *meta.RESTMapping) (resource.RESTClient, error)
 
 	// Returns a schema that can validate objects stored on disk.
+	// 验证资源对象
 	Validator(validationDirective string) (validation.Schema, error)
 
 	// Used for retrieving openapi v2 resources.

@@ -310,6 +310,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	warningHandler := rest.NewWarningWriter(o.IOStreams.ErrOut, rest.WarningWriterOptions{Deduplicate: true, Color: term.AllowsColorOutput(o.IOStreams.ErrOut)})
 	warningsAsErrors := false
 	// Parent command to which all subcommands are added.
+	// 实例化rootCmd对象
 	cmds := &cobra.Command{
 		Use:   "kubectl",
 		Short: i18n.T("kubectl controls the Kubernetes cluster manager"),
@@ -370,6 +371,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	// Updates hooks to add kubectl command headers: SIG CLI KEP 859.
 	addCmdHeaderHooks(cmds, kubeConfigFlags)
 
+	// 实例化factory接口
 	f := cmdutil.NewFactory(matchVersionKubeConfigFlags)
 
 	// Proxy command is incompatible with CommandHeaderRoundTripper, so
@@ -383,8 +385,10 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	getCmd := get.NewCmdGet("kubectl", f, o.IOStreams)
 	getCmd.ValidArgsFunction = utilcomp.ResourceTypeAndNameCompletionFunc(f)
 
+	// 定义kubelet不同的命令类别
 	groups := templates.CommandGroups{
 		{
+			// 基础cmd（初级）
 			Message: "Basic Commands (Beginner):",
 			Commands: []*cobra.Command{
 				create.NewCmdCreate(f, o.IOStreams),
@@ -394,6 +398,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 			},
 		},
 		{
+			// 基础cmd（中级）
 			Message: "Basic Commands (Intermediate):",
 			Commands: []*cobra.Command{
 				explain.NewCmdExplain("kubectl", f, o.IOStreams),
@@ -403,6 +408,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 			},
 		},
 		{
+			// 部署cmd
 			Message: "Deploy Commands:",
 			Commands: []*cobra.Command{
 				rollout.NewCmdRollout(f, o.IOStreams),
@@ -411,6 +417,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 			},
 		},
 		{
+			// 集群管理cmd
 			Message: "Cluster Management Commands:",
 			Commands: []*cobra.Command{
 				certificates.NewCmdCertificate(f, o.IOStreams),
@@ -423,6 +430,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 			},
 		},
 		{
+			// 故障排查和调试cmd
 			Message: "Troubleshooting and Debugging Commands:",
 			Commands: []*cobra.Command{
 				describe.NewCmdDescribe("kubectl", f, o.IOStreams),
@@ -438,6 +446,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 			},
 		},
 		{
+			// 高级cmd
 			Message: "Advanced Commands:",
 			Commands: []*cobra.Command{
 				diff.NewCmdDiff(f, o.IOStreams),
@@ -449,6 +458,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 			},
 		},
 		{
+			// 设置cmd
 			Message: "Settings Commands:",
 			Commands: []*cobra.Command{
 				label.NewCmdLabel(f, o.IOStreams),
@@ -478,6 +488,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	utilcomp.SetFactoryForCompletion(f)
 	registerCompletionFuncForGlobalFlags(cmds, f)
 
+	// 通过cmds.AddCommand设置其他cmd
 	cmds.AddCommand(alpha)
 	cmds.AddCommand(cmdconfig.NewCmdConfig(clientcmd.NewDefaultPathOptions(), o.IOStreams))
 	cmds.AddCommand(plugin.NewCmdPlugin(o.IOStreams))

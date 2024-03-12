@@ -249,14 +249,19 @@ func (o *CreateOptions) RunCreate(f cmdutil.Factory, cmd *cobra.Command) error {
 		return err
 	}
 
+	// NewBuilder实例化Builder对象
+	// r的
 	r := f.NewBuilder().
-		Unstructured().
+		// 对参数进行赋值和初始化
 		Schema(schema).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
+		// 识别kubectl create命令行参数是通过哪种方式（1.标准输入；2.本地文件；3.网络文件）传入资源对象描述的
 		FilenameParam(enforceNamespace, &o.FilenameOptions).
 		LabelSelectorParam(o.Selector).
 		Flatten().
+		// 将参数保存到Builder对象中，Do()返回Result对象，r的info字段保存了RESTClient与kube-apiserver交互的结果
+		// Result对象中的结果由Visitor产生
 		Do()
 	err = r.Err()
 	if err != nil {

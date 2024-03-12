@@ -23,6 +23,7 @@ import (
 	"k8s.io/kube-aggregator/pkg/apis/apiregistration/install"
 )
 
+// 初始化scheme资源注册表
 var (
 	// Scheme defines methods for serializing and deserializing API objects.
 	Scheme = runtime.NewScheme()
@@ -32,5 +33,6 @@ var (
 )
 
 func init() {
+	// 注册kubernetes所支持的资源
 	install.Install(Scheme)
 }
