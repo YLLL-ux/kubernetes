@@ -45,6 +45,7 @@ const (
 //
 // The StatefulSet guarantees that a given network identity will always
 // map to the same storage identity.
+// 资源外部版本
 type StatefulSet struct {
 	metav1.TypeMeta `json:",inline"`
 	// Standard object's metadata.

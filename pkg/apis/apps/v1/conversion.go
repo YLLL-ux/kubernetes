@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"strconv"
 
-	appsv1 "k8s.io/api/apps/v1"
+	appsv1 "k8s.io/api/apps/v1" // 资源外部版本
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/conversion"
-	"k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/apps" // 资源内部版本
 	"k8s.io/kubernetes/pkg/apis/core"
 )
 

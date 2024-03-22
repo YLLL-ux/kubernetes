@@ -33,6 +33,7 @@ var (
 const GroupName = "apps"
 
 // SchemeGroupVersion is group version used to register these objects
+// 注册内部版本
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: runtime.APIVersionInternal}
 
 // Kind takes an unqualified kind and returns a Group qualified GroupKind

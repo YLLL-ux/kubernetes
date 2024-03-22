@@ -3897,6 +3897,7 @@ type PodStatusResult struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Pod is a collection of containers, used as either input (create, update) or as output (list, get).
+// Pod 资源内部版本
 type Pod struct {
 	metav1.TypeMeta
 	// +optional

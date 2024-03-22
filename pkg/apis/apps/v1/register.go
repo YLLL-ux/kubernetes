@@ -25,6 +25,7 @@ import (
 const GroupName = "apps"
 
 // SchemeGroupVersion is group version used to register these objects
+// 注册资源外部版本
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1"}
 
 // Resource takes an unqualified resource and returns a Group qualified GroupResource
