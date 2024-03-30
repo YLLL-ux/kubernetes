@@ -105,16 +105,23 @@ func newDeploymentControllerDescriptor() *ControllerDescriptor {
 }
 
 func startDeploymentController(ctx context.Context, controllerContext ControllerContext, controllerName string) (controller.Interface, bool, error) {
+	// 初始化DeploymentController实例
 	dc, err := deployment.NewDeploymentController(
 		ctx,
+		// DeploymentInformer
 		controllerContext.InformerFactory.Apps().V1().Deployments(),
+		// ReplicaSetInformer
 		controllerContext.InformerFactory.Apps().V1().ReplicaSets(),
+		// PodInformer
 		controllerContext.InformerFactory.Core().V1().Pods(),
+		// ClientSetInformer
 		controllerContext.ClientBuilder.ClientOrDie("deployment-controller"),
 	)
 	if err != nil {
 		return nil, true, fmt.Errorf("error creating Deployment controller: %v", err)
 	}
+	// 启动DeploymentController
+	// ConcurrentDeploymentSyncs指定了并发reconcile的数量
 	go dc.Run(ctx, int(controllerContext.ComponentConfig.DeploymentController.ConcurrentDeploymentSyncs))
 	return nil, true, nil
 }

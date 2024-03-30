@@ -1,0 +1,2 @@
+# 逻辑入口
+controller-manager.go > NewControllerManagerCommand() > Run() > NewControllerDescriptors() > register(newDeploymentControllerDescriptor()) > newDeploymentControllerDescriptor() > startDeploymentController()
