@@ -508,13 +508,15 @@ func (dc *DeploymentController) worker(ctx context.Context) {
 }
 
 func (dc *DeploymentController) processNextWorkItem(ctx context.Context) bool {
+	// 从DeploymentController的队列中获取一个元素
 	key, quit := dc.queue.Get()
 	if quit {
 		return false
 	}
 	defer dc.queue.Done(key)
 
-	err := dc.syncHandler(ctx, key.(string))
+	// 主要逻辑
+	err := dc.syncHandler(ctx, key.(string)) // 本质上调用的是dc.syncDeployment
 	dc.handleErr(ctx, err, key)
 
 	return true
@@ -610,8 +612,10 @@ func (dc *DeploymentController) getPodMapForDeployment(d *apps.Deployment, rsLis
 
 // syncDeployment will sync the deployment with the given key.
 // This function is not meant to be invoked concurrently with the same key.
+// 获取从WorkerQueue中出队的key，根据key来sync对应的Deployment
 func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) error {
 	logger := klog.FromContext(ctx)
+	// 从key中分割出namespace和name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		logger.Error(err, "Failed to split meta namespace cache key", "cacheKey", key)
@@ -624,6 +628,7 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 		logger.V(4).Info("Finished syncing deployment", "deployment", klog.KRef(namespace, name), "duration", time.Since(startTime))
 	}()
 
+	// 根据namespace和name从cache中检索出对应的Deployment对象
 	deployment, err := dc.dLister.Deployments(namespace).Get(name)
 	if errors.IsNotFound(err) {
 		logger.V(2).Info("Deployment has been deleted", "deployment", klog.KRef(namespace, name))
@@ -635,8 +640,10 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 
 	// Deep-copy otherwise we are mutating our cache.
 	// TODO: Deep-copy only when needed.
+	// 为了不改动这个cache，这是一个ThreadSafeStore
 	d := deployment.DeepCopy()
 
+	// 空LabelSelector会匹配到所有Pod，发出一个警告时间（warning event），更新d.Status.ObserverGeneration然后返回
 	everything := metav1.LabelSelector{}
 	if reflect.DeepEqual(d.Spec.Selector, &everything) {
 		dc.eventRecorder.Eventf(d, v1.EventTypeWarning, "SelectingAll", "This deployment is selecting all pods. A non-empty selector is required.")
@@ -649,6 +656,7 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 
 	// List ReplicaSets owned by this Deployment, while reconciling ControllerRef
 	// through adoption/orphaning.
+	// 获取当前Deployment拥有的所有ReplicaSet，同时会更新这些ReplicaSet的ControllerRef
 	rsList, err := dc.getReplicaSetsForDeployment(ctx, d)
 	if err != nil {
 		return err
@@ -658,11 +666,13 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 	//
 	// * check if a Pod is labeled correctly with the pod-template-hash label.
 	// * check that no old Pods are running in the middle of Recreate Deployments.
+	// 这个map是map[types.UID][]*v1.Pod类型，key是rs的UID，value是对应rs管理的所有Pod列表
 	podMap, err := dc.getPodMapForDeployment(d, rsList)
 	if err != nil {
 		return err
 	}
 
+	// 已经标记要删除了，这时只更新状态
 	if d.DeletionTimestamp != nil {
 		return dc.syncStatusOnly(ctx, d, rsList)
 	}
@@ -670,11 +680,13 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 	// Update deployment conditions with an Unknown condition when pausing/resuming
 	// a deployment. In this way, we can be sure that we won't timeout when a user
 	// resumes a Deployment with a set progressDeadlineSeconds.
+	// 根据d.Spec.Pause配置看是否更新Deployment的conditions
 	if err = dc.checkPausedConditions(ctx, d); err != nil {
 		return err
 	}
 
 	if d.Spec.Paused {
+		// Pause或scale时的调谐逻辑
 		return dc.sync(ctx, d, rsList)
 	}
 
@@ -682,20 +694,25 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 	// revision so we should ensure that we won't proceed to update replica sets until we
 	// make sure that the deployment has cleaned up its rollback spec in subsequent enqueues.
 	if getRollbackTo(d) != nil {
+		// 回滚到旧版本的逻辑
 		return dc.rollback(ctx, d, rsList)
 	}
 
+	// 如果是scale
 	scalingEvent, err := dc.isScalingEvent(ctx, d, rsList)
 	if err != nil {
 		return err
 	}
+	// Pause或scale时的调谐逻辑
 	if scalingEvent {
 		return dc.sync(ctx, d, rsList)
 	}
 
 	switch d.Spec.Strategy.Type {
+	// 重建策略
 	case apps.RecreateDeploymentStrategyType:
 		return dc.rolloutRecreate(ctx, d, rsList, podMap)
+	// 滚动更新策略
 	case apps.RollingUpdateDeploymentStrategyType:
 		return dc.rolloutRolling(ctx, d, rsList)
 	}
