@@ -30,6 +30,7 @@ func IsControlledBy(obj Object, owner Object) bool {
 }
 
 // GetControllerOf returns a pointer to a copy of the controllerRef if controllee has a controller
+// 查询对应的父级资源
 func GetControllerOf(controllee Object) *OwnerReference {
 	ref := GetControllerOfNoCopy(controllee)
 	if ref == nil {

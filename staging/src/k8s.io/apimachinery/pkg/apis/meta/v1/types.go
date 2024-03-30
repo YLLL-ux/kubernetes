@@ -288,6 +288,7 @@ const (
 // object. An owning object must be in the same namespace as the dependent, or
 // be cluster-scoped, so there is no namespace field.
 // +structType=atomic
+// 主要用于实现级联删除（cascading delete）。当一个资源被删除时，Kubernetes 会自动删除所有引用该资源的 OwnerReference 的资源。
 type OwnerReference struct {
 	// API version of the referent.
 	APIVersion string `json:"apiVersion" protobuf:"bytes,5,opt,name=apiVersion"`

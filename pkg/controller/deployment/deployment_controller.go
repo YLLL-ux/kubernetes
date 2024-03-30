@@ -63,8 +63,10 @@ var controllerKind = apps.SchemeGroupVersion.WithKind("Deployment")
 
 // DeploymentController is responsible for synchronizing Deployment objects stored
 // in the system with actual running replica sets and pods.
+// DeploymentController定义
 type DeploymentController struct {
 	// rsControl is used for adopting/releasing replica sets.
+	// RS控制器
 	rsControl controller.RSControlInterface
 	client    clientset.Interface
 
@@ -77,10 +79,13 @@ type DeploymentController struct {
 	enqueueDeployment func(deployment *apps.Deployment)
 
 	// dLister can list/get deployments from the shared informer's store
+	// 从cache中get/list DeploymentLister
 	dLister appslisters.DeploymentLister
 	// rsLister can list/get replica sets from the shared informer's store
+	// 从cache中get/list RS
 	rsLister appslisters.ReplicaSetLister
 	// podLister can list/get pods from the shared informer's store
+	// 从cache中get/list Pod
 	podLister corelisters.PodLister
 
 	// dListerSynced returns true if the Deployment store has been synced at least once.
@@ -94,13 +99,17 @@ type DeploymentController struct {
 	podListerSynced cache.InformerSynced
 
 	// Deployments that need to be synced
+	// 工作队列，限速队列实现
 	queue workqueue.RateLimitingInterface
 }
 
 // NewDeploymentController creates a new DeploymentController.
+// 初始化DeploymentController控制器
 func NewDeploymentController(ctx context.Context, dInformer appsinformers.DeploymentInformer, rsInformer appsinformers.ReplicaSetInformer, podInformer coreinformers.PodInformer, client clientset.Interface) (*DeploymentController, error) {
+	// event相关逻辑
 	eventBroadcaster := record.NewBroadcaster()
 	logger := klog.FromContext(ctx)
+	// 初始化一个DeploymentController对象实例
 	dc := &DeploymentController{
 		client:           client,
 		eventBroadcaster: eventBroadcaster,
@@ -108,10 +117,11 @@ func NewDeploymentController(ctx context.Context, dInformer appsinformers.Deploy
 		queue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "deployment"),
 	}
 	dc.rsControl = controller.RealRSControl{
-		KubeClient: client,
+		KubeClient: client, // 主要是clientSet
 		Recorder:   dc.eventRecorder,
 	}
 
+	// ResourceEventHandler配置
 	dInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			dc.addDeployment(logger, obj)
@@ -141,9 +151,11 @@ func NewDeploymentController(ctx context.Context, dInformer appsinformers.Deploy
 		},
 	})
 
+	// 主要逻辑
 	dc.syncHandler = dc.syncDeployment
 	dc.enqueueDeployment = dc.enqueue
 
+	// 不同资源的lister
 	dc.dLister = dInformer.Lister()
 	dc.rsLister = rsInformer.Lister()
 	dc.podLister = podInformer.Lister()
@@ -180,8 +192,10 @@ func (dc *DeploymentController) Run(ctx context.Context, workers int) {
 }
 
 func (dc *DeploymentController) addDeployment(logger klog.Logger, obj interface{}) {
+	// 将obj断言为Deployment
 	d := obj.(*apps.Deployment)
 	logger.V(4).Info("Adding deployment", "deployment", klog.KObj(d))
+	// 新增Deployment时直接入队（Enqueue）
 	dc.enqueueDeployment(d)
 }
 
@@ -189,12 +203,14 @@ func (dc *DeploymentController) updateDeployment(logger klog.Logger, old, cur in
 	oldD := old.(*apps.Deployment)
 	curD := cur.(*apps.Deployment)
 	logger.V(4).Info("Updating deployment", "deployment", klog.KObj(oldD))
+	// oldD 只用来打印log，cur Deployment Enqueue
 	dc.enqueueDeployment(curD)
 }
 
 func (dc *DeploymentController) deleteDeployment(logger klog.Logger, obj interface{}) {
 	d, ok := obj.(*apps.Deployment)
 	if !ok {
+		// 处理DeletedFinalStateUnknown场景
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
@@ -207,6 +223,7 @@ func (dc *DeploymentController) deleteDeployment(logger klog.Logger, obj interfa
 		}
 	}
 	logger.V(4).Info("Deleting deployment", "deployment", klog.KObj(d))
+	// Deployment Enqueue
 	dc.enqueueDeployment(d)
 }
 
@@ -214,6 +231,7 @@ func (dc *DeploymentController) deleteDeployment(logger klog.Logger, obj interfa
 func (dc *DeploymentController) addReplicaSet(logger klog.Logger, obj interface{}) {
 	rs := obj.(*apps.ReplicaSet)
 
+	// 如果准备删除了，在重启的过程中会收到Added事件，这时直接调用删除操作
 	if rs.DeletionTimestamp != nil {
 		// On a restart of the controller manager, it's possible for an object to
 		// show up in a state that is already pending deletion.
@@ -221,6 +239,7 @@ func (dc *DeploymentController) addReplicaSet(logger klog.Logger, obj interface{
 		return
 	}
 	// If it has a ControllerRef, that's all that matters.
+	// 查询对应的Deployment
 	if controllerRef := metav1.GetControllerOf(rs); controllerRef != nil {
 		d := dc.resolveControllerRef(rs.Namespace, controllerRef)
 		if d == nil {
@@ -233,11 +252,13 @@ func (dc *DeploymentController) addReplicaSet(logger klog.Logger, obj interface{
 
 	// Otherwise, it's an orphan. Get a list of all matching Deployments and sync
 	// them to see if anyone wants to adopt it.
+	// 如果是一个孤儿ReplicaSet，则查看是否能找到一个Deployment来领养
 	ds := dc.getDeploymentsForReplicaSet(logger, rs)
 	if len(ds) == 0 {
 		return
 	}
 	logger.V(4).Info("Orphan ReplicaSet added", "replicaSet", klog.KObj(rs))
+	// 一般只有一个Deployment，但是也不能排除多个的情况，所以这里用的是ds列表，循环enqueue
 	for _, d := range ds {
 		dc.enqueueDeployment(d)
 	}
@@ -273,6 +294,7 @@ func (dc *DeploymentController) updateReplicaSet(logger klog.Logger, old, cur in
 	if curRS.ResourceVersion == oldRS.ResourceVersion {
 		// Periodic resync will send update events for all known replica sets.
 		// Two different versions of the same replica set will always have different RVs.
+		// Resync的时候RV相同，不做处理
 		return
 	}
 
@@ -281,6 +303,7 @@ func (dc *DeploymentController) updateReplicaSet(logger klog.Logger, old, cur in
 	controllerRefChanged := !reflect.DeepEqual(curControllerRef, oldControllerRef)
 	if controllerRefChanged && oldControllerRef != nil {
 		// The ControllerRef was changed. Sync the old controller, if any.
+		// 如果rs的ref变更了，就需要通知旧的ref对应的Deployment
 		if d := dc.resolveControllerRef(oldRS.Namespace, oldControllerRef); d != nil {
 			dc.enqueueDeployment(d)
 		}
@@ -292,6 +315,7 @@ func (dc *DeploymentController) updateReplicaSet(logger klog.Logger, old, cur in
 			return
 		}
 		logger.V(4).Info("ReplicaSet updated", "replicaSet", klog.KObj(curRS))
+		// 当前rs对应dp入队
 		dc.enqueueDeployment(d)
 		return
 	}
@@ -300,6 +324,7 @@ func (dc *DeploymentController) updateReplicaSet(logger klog.Logger, old, cur in
 	// to see if anyone wants to adopt it now.
 	labelChanged := !reflect.DeepEqual(curRS.Labels, oldRS.Labels)
 	if labelChanged || controllerRefChanged {
+		// 孤儿rs的场景，与Added时处理逻辑一样
 		ds := dc.getDeploymentsForReplicaSet(logger, curRS)
 		if len(ds) == 0 {
 			return
@@ -322,6 +347,7 @@ func (dc *DeploymentController) deleteReplicaSet(logger klog.Logger, obj interfa
 	// the deleted key/value. Note that this value might be stale. If the ReplicaSet
 	// changed labels the new deployment will not be woken up till the periodic resync.
 	if !ok {
+		// 处理DeletedFinalStateUnknown场景
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
@@ -334,6 +360,7 @@ func (dc *DeploymentController) deleteReplicaSet(logger klog.Logger, obj interfa
 		}
 	}
 
+	// 孤儿rs被删除时没有Deployment需要关心
 	controllerRef := metav1.GetControllerOf(rs)
 	if controllerRef == nil {
 		// No controller should care about orphans being deleted.
@@ -344,6 +371,7 @@ func (dc *DeploymentController) deleteReplicaSet(logger klog.Logger, obj interfa
 		return
 	}
 	logger.V(4).Info("ReplicaSet deleted", "replicaSet", klog.KObj(rs))
+	// 入队
 	dc.enqueueDeployment(d)
 }
 
