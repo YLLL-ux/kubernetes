@@ -34,6 +34,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/managedfields"
 	"k8s.io/apimachinery/pkg/util/sets"
+	versioninfo "k8s.io/component-base/version"
+	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
+
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/endpoints/deprecation"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
@@ -45,11 +48,10 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/storageversion"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	versioninfo "k8s.io/component-base/version"
-	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
 const (
+	// OpenAPI自定义扩展属性
 	ROUTE_META_GVK    = "x-kubernetes-group-version-kind"
 	ROUTE_META_ACTION = "x-kubernetes-action"
 )
@@ -279,6 +281,7 @@ func GetResourceKind(groupVersion schema.GroupVersion, storage rest.Storage, typ
 	return fqKindToRegister, nil
 }
 
+// 注册资源处理器
 func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storage, ws *restful.WebService) (*metav1.APIResource, *storageversion.ResourceInfo, error) {
 	admit := a.group.Admit
 
@@ -1058,6 +1061,7 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 		default:
 			return nil, nil, fmt.Errorf("unrecognized action verb: %s", action.Verb)
 		}
+		// 将OpenAPI自定义扩展属性与资源信息进行关联
 		for _, route := range routes {
 			route.Metadata(ROUTE_META_GVK, metav1.GroupVersionKind{
 				Group:   reqScope.Kind.Group,

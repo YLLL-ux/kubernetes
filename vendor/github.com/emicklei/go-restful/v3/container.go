@@ -233,6 +233,9 @@ func (c *Container) dispatch(httpWriter http.ResponseWriter, httpRequest *http.R
 	func() {
 		c.webServicesLock.RLock()
 		defer c.webServicesLock.RUnlock()
+		// 根据请求匹配到最优的WebService、Route
+		// 包含了两种router：CurlyRouter、RouterJSR311
+		// CurlyRouter基于RouterJSR311实现，go-restful默认使用CurlyRouter
 		webService, route, err = c.router.SelectRoute(
 			c.webServices,
 			httpRequest)
@@ -279,8 +282,10 @@ func (c *Container) dispatch(httpWriter http.ResponseWriter, httpRequest *http.R
 		pathProcessor = defaultPathProcessor{}
 	}
 	pathParams := pathProcessor.ExtractParameters(route, webService, httpRequest.URL.Path)
+	// 对request和response进行包装
 	wrappedRequest, wrappedResponse := route.wrapRequestResponse(writer, httpRequest, pathParams)
 	// pass through filters (if any)
+	// 过滤器链，先执行Container的过滤器，然后执行WebService的过滤器，最后执行Route的过滤器
 	if size := len(c.containerFilters) + len(webService.filters) + len(route.Filters); size > 0 {
 		// compose filter chain
 		allFilters := make([]FilterFunction, 0, size)
@@ -296,6 +301,7 @@ func (c *Container) dispatch(httpWriter http.ResponseWriter, httpRequest *http.R
 		chain.ProcessFilter(wrappedRequest, wrappedResponse)
 	} else {
 		// no filters, handle request by route
+		// 没有过滤器，直接处理请求
 		route.Function(wrappedRequest, wrappedResponse)
 	}
 }
