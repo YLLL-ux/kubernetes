@@ -312,6 +312,7 @@ func CreateKubeAPIServerConfig(opts options.CompletedOptions) (
 	}
 
 	// setup admission
+	// admission准入控制器配置admission
 	admissionConfig := &kubeapiserveradmission.Config{
 		ExternalInformers:    versionedInformers,
 		LoopbackClientConfig: genericConfig.LoopbackClientConfig,
