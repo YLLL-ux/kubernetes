@@ -79,22 +79,28 @@ func init() {
 
 // NewAPIServerCommand creates a *cobra.Command object with default parameters
 func NewAPIServerCommand() *cobra.Command {
+	// 初始化各个模块默认配置
 	s := options.NewServerRunOptions()
 	cmd := &cobra.Command{
+		// 定义了命令的名称. 用户将通过 kube-apiserver 命令来启动 API 服务器
 		Use: "kube-apiserver",
+		// 命令的详细描述. 这个描述会在用户使用 --help 标志时显示。它解释了 kube-apiserver 命令的功能
 		Long: `The Kubernetes API server validates and configures data
 for the api objects which include pods, services, replicationcontrollers, and
 others. The API Server services REST operations and provides the frontend to the
 cluster's shared state through which all other components interact.`,
 
 		// stop printing usage when the command errors
+		// 当命令出错时，这个字段控制是否打印用法信息。如果设置为true，则在出错时不打印用法信息。
 		SilenceUsage: true,
+		// 一个钩子函数，在命令执行之前运行，无论何时命令被执行都会调用。这里它用于设置默认的警告处理器，以避免日志中出现不必要的警告信息
 		PersistentPreRunE: func(*cobra.Command, []string) error {
 			// silence client-go warnings.
 			// kube-apiserver loopback clients should not log self-issued warnings.
 			rest.SetDefaultWarningHandler(rest.NoWarnings{})
 			return nil
 		},
+		// 当命令被执行时应该运行的函数。
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verflag.PrintAndExitIfRequested()
 			fs := cmd.Flags()
@@ -107,19 +113,23 @@ cluster's shared state through which all other components interact.`,
 			cliflag.PrintFlags(fs)
 
 			// set default options
+			// 通过Complete函数填充默认的配置参数
 			completedOptions, err := s.Complete()
 			if err != nil {
 				return err
 			}
 
 			// validate options
+			// Validate验证配置参数的合法性和可用性
 			if errs := completedOptions.Validate(); len(errs) != 0 {
 				return utilerrors.NewAggregate(errs)
 			}
 			// add feature enablement metrics
 			utilfeature.DefaultMutableFeatureGate.AddMetrics()
+			// 将ServerRunOptions对象传入Run函数，启动API服务器
 			return Run(completedOptions, genericapiserver.SetupSignalHandler())
 		},
+		// 验证命令行参数的函数。如果用户输入了不被期望的参数，这个函数将返回一个错误。
 		Args: func(cmd *cobra.Command, args []string) error {
 			for _, arg := range args {
 				if len(arg) > 0 {
@@ -130,12 +140,14 @@ cluster's shared state through which all other components interact.`,
 		},
 	}
 
+	// 用于访问命令的 Flag 集合，允许添加、设置和读取命令的 Flag。
 	fs := cmd.Flags()
 	namedFlagSets := s.Flags()
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name(), logs.SkipLoggingConfigurationFlags())
 	options.AddCustomGlobalFlags(namedFlagSets.FlagSet("generic"))
 	for _, f := range namedFlagSets.FlagSets {
+		// 添加设置的flag到命令中
 		fs.AddFlagSet(f)
 	}
 
@@ -146,6 +158,8 @@ cluster's shared state through which all other components interact.`,
 }
 
 // Run runs the specified APIServer.  This should never exit.
+// 定义了kube-apiserver的启动逻辑，包括初始化配置、创建API服务器、启动API服务器等。
+// 这个函数永远不会退出。
 func Run(opts options.CompletedOptions, stopCh <-chan struct{}) error {
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
