@@ -57,6 +57,7 @@ func DefaultWatchCacheSizes() map[schema.GroupResource]int {
 }
 
 // NewStorageFactoryConfig returns a new StorageFactoryConfig set up with necessary resource overrides.
+// 定义了kuber-apiserver与etcd的交互方式，例如etcd认证、etcd地址、存储前缀等。
 func NewStorageFactoryConfig() *StorageFactoryConfig {
 	resources := []schema.GroupVersionResource{
 		// If a resource has to be stored in a version that is not the

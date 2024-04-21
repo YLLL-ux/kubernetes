@@ -785,6 +785,7 @@ var (
 )
 
 // DefaultAPIResourceConfigSource returns default configuration for an APIResource.
+// 启用stable GV，禁用beta GV，禁用alpha GV
 func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 	ret := serverstorage.NewResourceConfig()
 	// NOTE: GroupVersions listed here will be enabled by default. Don't put alpha or beta versions in the list.

@@ -21,7 +21,6 @@ import (
 	"time"
 
 	oteltrace "go.opentelemetry.io/otel/trace"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
@@ -65,7 +64,10 @@ func BuildGenericConfig(
 
 	lastErr error,
 ) {
+	// 实例化genericConfig对象
 	genericConfig = genericapiserver.NewConfig(legacyscheme.Codecs)
+	// 用于启用或禁用GV及其Resource
+	// 如果未在命令行中指定启用/禁用GV，则使用默认设置
 	genericConfig.MergedResourceConfig = controlplane.DefaultAPIResourceConfigSource()
 
 	if lastErr = s.GenericServerRunOptions.ApplyTo(genericConfig); lastErr != nil {
@@ -108,6 +110,7 @@ func BuildGenericConfig(
 		}
 	}
 	// wrap the definitions to revert any changes from disabled features
+	// 设置OpenAPI/swagger配置
 	getOpenAPIDefinitions = openapi.GetOpenAPIDefinitionsWithoutDisabledFeatures(getOpenAPIDefinitions)
 	namer := openapinamer.NewDefinitionNamer(schemes...)
 	genericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(getOpenAPIDefinitions, namer)
@@ -132,6 +135,7 @@ func BuildGenericConfig(
 		s.Etcd.StorageConfig.Transport.TracerProvider = oteltrace.NewNoopTracerProvider()
 	}
 
+	// etcd配置
 	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig()
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
 	storageFactory, lastErr = storageFactoryConfig.Complete(s.Etcd).New()
@@ -142,11 +146,15 @@ func BuildGenericConfig(
 		return
 	}
 
+	// 每个请求进来时，都需要经过Authentication（认证）、Authorization（授权）、Admission Controller（准入控制器）后，才能真正地操作资源
+
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
+	// Authentication认证配置
 	if lastErr = s.Authentication.ApplyTo(&genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, genericConfig.OpenAPIV3Config, clientgoExternalClient, versionedInformers); lastErr != nil {
 		return
 	}
 
+	// Authorization授权配置
 	var enablesRBAC bool
 	genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, enablesRBAC, err = BuildAuthorizer(s, genericConfig.EgressSelector, versionedInformers)
 	if err != nil {
