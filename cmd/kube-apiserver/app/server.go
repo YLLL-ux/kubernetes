@@ -27,7 +27,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,16 +58,20 @@ import (
 	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
 
 	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api/legacyscheme" //初始化kube-apiserver资源注册表
 	"k8s.io/kubernetes/pkg/capabilities"
 	"k8s.io/kubernetes/pkg/controlplane"
-	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver"
+	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver" //注册kubernetes所支持的资源
 	"k8s.io/kubernetes/pkg/controlplane/reconcilers"
 	"k8s.io/kubernetes/pkg/features"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	kubeapiserveradmission "k8s.io/kubernetes/pkg/kubeapiserver/admission"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 )
+
+// kube-apiserver资源注册分为两步：
+// 1. 初始化legacyscheme.Scheme资源注册表
+// 2. 注册kubernetes所有支持的资源
 
 func init() {
 	utilruntime.Must(logsapi.AddFeatureGates(utilfeature.DefaultMutableFeatureGate))

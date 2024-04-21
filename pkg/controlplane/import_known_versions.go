@@ -16,9 +16,12 @@ limitations under the License.
 
 package controlplane
 
+// 2.注册kubernetes所需的资源
+// 每个kubernetes内部资源都有install包，用于在kuber-apiserver启动时注册资源
+
 import (
 	// These imports are the API groups the API server will support.
-	// 注册kubernetes所需的资源
+
 	_ "k8s.io/kubernetes/pkg/apis/admission/install"
 	_ "k8s.io/kubernetes/pkg/apis/admissionregistration/install"
 	_ "k8s.io/kubernetes/pkg/apis/apiserverinternal/install"
