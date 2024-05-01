@@ -124,10 +124,12 @@ func ValidateAndApplyAsField(c *LoggingConfiguration, featureGate featuregate.Fe
 }
 
 func validateAndApply(c *LoggingConfiguration, options *LoggingOptions, featureGate featuregate.FeatureGate, fldPath *field.Path) error {
+	// 验证
 	errs := Validate(c, featureGate, fldPath)
 	if len(errs) > 0 {
 		return errs.ToAggregate()
 	}
+	// 应用
 	return apply(c, options, featureGate)
 }
 

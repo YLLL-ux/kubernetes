@@ -160,6 +160,11 @@ var _ pflag.Value = &featureGate{}
 // call chains, so they'd be unhelpful as names.
 var internalPackages = []string{"k8s.io/component-base/featuregate/feature_gate.go"}
 
+// Kubernetes 通过引入 Feature Gates 来实现以下目的：
+// 1.渐进式功能发布：允许开发者在特性完全成熟之前对其进行测试，同时为集群管理员提供选择性启用或禁用这些特性的灵活性。
+// 2.特性稳定性管理：对于处于 Alpha 或 Beta 状态的特性，它们可能还未完全稳定，通过 Feature Gates 可以控制这些特性的可用性。
+// 3.向后兼容性：在特性发展过程中，如果需要对特性进行更改或最终决定移除某个特性，Feature Gates 可以作为过渡手段，确保集群的稳定性和向后兼容性。
+// 4.实验性特性：对于实验性或预发布的特性，Feature Gates 提供了一个简单的机制来控制这些特性的启用状态。
 func NewFeatureGate() *featureGate {
 	known := map[Feature]FeatureSpec{}
 	for k, v := range defaultFeatures {
