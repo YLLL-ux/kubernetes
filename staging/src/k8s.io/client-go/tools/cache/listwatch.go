@@ -30,12 +30,14 @@ import (
 type Lister interface {
 	// List should return a list type object; the Items field will be extracted, and the
 	// ResourceVersion field will be used to start the watch in the right place.
+	// List的返回值应该是一个list类型对象，也就是其中有Items字段，里面的ResourceVersion可以用来watch
 	List(options metav1.ListOptions) (runtime.Object, error)
 }
 
 // Watcher is any object that knows how to start a watch on a resource.
 type Watcher interface {
 	// Watch should begin a watch at the specified version.
+	// 从指定的资源版本开始watch
 	Watch(options metav1.ListOptions) (watch.Interface, error)
 }
 
@@ -69,7 +71,7 @@ type Getter interface {
 // NewListWatchFromClient creates a new ListWatch from the specified client, resource, namespace and field selector.
 func NewListWatchFromClient(c Getter, resource string, namespace string, fieldSelector fields.Selector) *ListWatch {
 	optionsModifier := func(options *metav1.ListOptions) {
-		options.FieldSelector = fieldSelector.String()
+		options.FieldSelector = fieldSelector.String() // 序列化成json字符串
 	}
 	return NewFilteredListWatchFromClient(c, resource, namespace, optionsModifier)
 }
@@ -78,6 +80,7 @@ func NewListWatchFromClient(c Getter, resource string, namespace string, fieldSe
 // Option modifier is a function takes a ListOptions and modifies the consumed ListOptions. Provide customized modifier function
 // to apply modification to ListOptions with a field selector, a label selector, or any other desired options.
 func NewFilteredListWatchFromClient(c Getter, resource string, namespace string, optionsModifier func(options *metav1.ListOptions)) *ListWatch {
+	// list某个namespace下的某个resource
 	listFunc := func(options metav1.ListOptions) (runtime.Object, error) {
 		optionsModifier(&options)
 		return c.Get().
@@ -87,6 +90,7 @@ func NewFilteredListWatchFromClient(c Getter, resource string, namespace string,
 			Do(context.TODO()).
 			Get()
 	}
+	// watch某个namespace下的某个resource
 	watchFunc := func(options metav1.ListOptions) (watch.Interface, error) {
 		options.Watch = true
 		optionsModifier(&options)
