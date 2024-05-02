@@ -107,6 +107,8 @@ type Reflector struct {
 	// might result in an increased memory consumption of the APIServer.
 	//
 	// See https://github.com/kubernetes/enhancements/tree/master/keps/sig-api-machinery/3157-watch-list#design-details
+	// 表示是否启用 Watch 操作来获取资源的列表。如果设置为 true，则客户端会优先使用 Watch 而不是 List 来获取资源。
+	// 在NewReflectorWithOptions会被设置为true
 	UseWatchList bool
 }
 
@@ -288,7 +290,7 @@ var internalPackages = []string{"client-go/tools/cache/"}
 func (r *Reflector) Run(stopCh <-chan struct{}) {
 	klog.V(3).Infof("Starting reflector %s (%s) from %s", r.typeDescription, r.resyncPeriod, r.name)
 	wait.BackoffUntil(func() {
-		if err := r.ListAndWatch(stopCh); err != nil {
+		if err := r.ListAndWatch(stopCh); err != nil { //核心逻辑ListAndWatch
 			r.watchErrorHandler(r, err)
 		}
 	}, r.backoffManager, true, stopCh)
@@ -321,13 +323,14 @@ func (r *Reflector) resyncChan() (<-chan time.Time, func() bool) {
 // ListAndWatch first lists all items and get the resource version at the moment of call,
 // and then use the resource version to watch.
 // It returns error if ListAndWatch didn't even try to initialize watch.
+// 有两种监控资源变化的方式：list、watch
 func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 	klog.V(3).Infof("Listing and watching %v from %s", r.typeDescription, r.name)
 	var err error
 	var w watch.Interface
-	// 两种list方式只能选择其中一种
 	fallbackToList := !r.UseWatchList
 
+	// 判断使用使用watch监听资源变化
 	if r.UseWatchList {
 		// 为了缓解内存压力，使用watch-cache获取list
 		w, err = r.watchList(stopCh)
@@ -343,6 +346,7 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 		}
 	}
 
+	// 当 UseWatchList 为 false 或者 Watch 操作失败时，会回退到使用 List 操作来获取资源。
 	if fallbackToList {
 		err = r.list(stopCh)
 		if err != nil {
@@ -357,6 +361,7 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 	defer close(cancelCh)
 	// 更新DetailFIFO
 	go r.startResync(stopCh, cancelCh, resyncerrc)
+	// 进行watch监听
 	return r.watch(w, stopCh, resyncerrc)
 }
 
@@ -378,6 +383,7 @@ func (r *Reflector) startResync(stopCh <-chan struct{}, cancelCh <-chan struct{}
 		}
 		if r.ShouldResync == nil || r.ShouldResync() {
 			klog.V(4).Infof("%s: forcing resync", r.name)
+			// 同步FIFO
 			if err := r.store.Resync(); err != nil {
 				resyncerrc <- err
 				return
@@ -670,7 +676,7 @@ func (r *Reflector) watchList(stopCh <-chan struct{}) (watch.Interface, error) {
 			return nil, err
 		}
 		bookmarkReceived := pointer.Bool(false)
-		// watch w interface，并更新resource version
+		// 将watch到的最新资源丢到DetailFIFO中
 		err = watchHandler(start, w, temporaryStore, r.expectedType, r.expectedGVK, r.name, r.typeDescription,
 			func(rv string) { resourceVersion = rv },
 			bookmarkReceived,
