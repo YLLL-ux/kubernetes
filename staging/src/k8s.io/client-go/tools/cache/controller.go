@@ -89,9 +89,10 @@ type ShouldResyncFunc func() bool
 type ProcessFunc func(obj interface{}, isInInitialList bool) error
 
 // `*controller` implements Controller
+// Informer通过一个Controller来定义
 type controller struct {
 	config         Config
-	reflector      *Reflector
+	reflector      *Reflector // Informer启动时会去运行Reflector，从而通过Reflector实现list-watch apiserver，更新“事件”到DeltaFIFO中用于进一步处理
 	reflectorMutex sync.RWMutex
 	clock          clock.Clock
 }
@@ -133,7 +134,7 @@ func (c *controller) Run(stopCh <-chan struct{}) {
 		<-stopCh
 		c.config.Queue.Close()
 	}()
-	r := NewReflectorWithOptions(
+	r := NewReflectorWithOptions( // 利用Config中的配置构造Reflector
 		c.config.ListerWatcher,
 		c.config.ObjectType,
 		c.config.Queue,
@@ -154,10 +155,10 @@ func (c *controller) Run(stopCh <-chan struct{}) {
 	c.reflectorMutex.Unlock()
 
 	var wg wait.Group
-
-	wg.StartWithChannel(stopCh, r.Run)
-
-	wait.Until(c.processLoop, time.Second, stopCh)
+	// 启动Reflector
+	wg.StartWithChannel(stopCh, r.Run) // 利用Reflector的ListAndWatch能力将对象处理事件更新到DeltaFIFO中
+	// 执行Controller的processLoop
+	wait.Until(c.processLoop, time.Second, stopCh) // 从DeltaFIFO中Pop对象后调用PopProcessFunc来处理
 	wg.Wait()
 }
 
@@ -443,26 +444,33 @@ func processDeltas(
 	isInInitialList bool,
 ) error {
 	// from oldest to newest
+	// 对于每个Deltas来说，其中保存了很多Delta，也就是对应不同类型的多个对象，这里的遍历会从旧往新走
 	for _, d := range deltas {
 		obj := d.Object
 
 		switch d.Type {
 		case Sync, Replaced, Added, Updated:
 			if old, exists, err := clientState.Get(obj); err == nil && exists {
+				// 通过indexer从cache中查询当前Obj，如果存在则更新indexer中的对象
 				if err := clientState.Update(obj); err != nil {
 					return err
 				}
+				// 调用ResourceEventHandler的OnUpdate()
 				handler.OnUpdate(old, obj)
 			} else {
+				// cache中Get不到Obj，则将对象添加到indexer
 				if err := clientState.Add(obj); err != nil {
 					return err
 				}
+				// 调用ResourceEventHandler的OnAdd()
 				handler.OnAdd(obj, isInInitialList)
 			}
 		case Deleted:
+			// 删除操作，则从indexer中删除这个对象
 			if err := clientState.Delete(obj); err != nil {
 				return err
 			}
+			// 调用ResourceEventHandler的OnDelete()
 			handler.OnDelete(obj)
 		}
 	}

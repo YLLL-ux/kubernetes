@@ -124,8 +124,9 @@ func NewFilteredSharedInformerFactory(client kubernetes.Interface, defaultResync
 func NewSharedInformerFactoryWithOptions(client kubernetes.Interface, defaultResync time.Duration, options ...SharedInformerOption) SharedInformerFactory {
 	factory := &sharedInformerFactory{
 		client:           client,
-		namespace:        v1.NamespaceAll,
+		namespace:        v1.NamespaceAll, // 空字符串""
 		defaultResync:    defaultResync,
+		// 可以存放不同类型的SharedIndexInformer
 		informers:        make(map[reflect.Type]cache.SharedIndexInformer),
 		startedInformers: make(map[reflect.Type]bool),
 		customResync:     make(map[reflect.Type]time.Duration),
@@ -148,6 +149,7 @@ func (f *sharedInformerFactory) Start(stopCh <-chan struct{}) {
 	}
 
 	for informerType, informer := range f.informers {
+		// 同类型只会调用一次
 		if !f.startedInformers[informerType] {
 			f.wg.Add(1)
 			// We need a new variable in each loop iteration,

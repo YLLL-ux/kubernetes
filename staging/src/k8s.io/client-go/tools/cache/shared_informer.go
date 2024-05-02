@@ -140,6 +140,7 @@ type SharedInformer interface {
 	// It returns a registration handle for the handler that can be used to
 	// remove the handler again, or to tell if the handler is synced (has
 	// seen every item in the initial list).
+	// 可以添加自定义的ResourceEventHandler
 	AddEventHandler(handler ResourceEventHandler) (ResourceEventHandlerRegistration, error)
 	// AddEventHandlerWithResyncPeriod adds an event handler to the
 	// shared informer with the requested resync period; zero means
@@ -157,17 +158,20 @@ type SharedInformer interface {
 	// be competing load and scheduling noise.
 	// It returns a registration handle for the handler that can be used to remove
 	// the handler again and an error if the handler cannot be added.
+	// 附带resync间隔配置，设置为0表示不关心resync
 	AddEventHandlerWithResyncPeriod(handler ResourceEventHandler, resyncPeriod time.Duration) (ResourceEventHandlerRegistration, error)
 	// RemoveEventHandler removes a formerly added event handler given by
 	// its registration handle.
 	// This function is guaranteed to be idempotent, and thread-safe.
 	RemoveEventHandler(handle ResourceEventHandlerRegistration) error
 	// GetStore returns the informer's local cache as a Store.
+	// 这里的Store指的是Indexer
 	GetStore() Store
 	// GetController is deprecated, it does nothing useful
 	GetController() Controller
 	// Run starts and runs the shared informer, returning after it stops.
 	// The informer will be stopped when stopCh is closed.
+	// 通过Run来启动
 	Run(stopCh <-chan struct{})
 	// HasSynced returns true if the shared informer's store has been
 	// informed by at least one full LIST of the authoritative state
@@ -176,10 +180,12 @@ type SharedInformer interface {
 	// Note that this doesn't tell you if an individual handler is synced!!
 	// For that, please call HasSynced on the handle returned by
 	// AddEventHandler.
+	// 这里和resync逻辑没有关系，表示Indexer至少更新过一次全量的对象
 	HasSynced() bool
 	// LastSyncResourceVersion is the resource version observed when last synced with the underlying
 	// store. The value returned is not synchronized with access to the underlying store and is not
 	// thread-safe.
+	// 最后一次拿到RV
 	LastSyncResourceVersion() string
 
 	// The WatchErrorHandler is called whenever ListAndWatch drops the
@@ -195,6 +201,7 @@ type SharedInformer interface {
 	// The handler is intended for visibility, not to e.g. pause the consumers.
 	// The handler should return quickly - any expensive processing should be
 	// offloaded.
+	// 用于每次ListAndWatch连接断开时回调，主要是日志记录的作用
 	SetWatchErrorHandler(handler WatchErrorHandler) error
 
 	// The TransformFunc is called for each object which is about to be stored.
@@ -206,6 +213,7 @@ type SharedInformer interface {
 	// Must be set before starting the informer.
 	//
 	// Please see the comment on TransformFunc for more details.
+	// 用于在对象存储前执行一些操作
 	SetTransform(handler TransformFunc) error
 
 	// IsStopped reports whether the informer has already been stopped.
@@ -364,6 +372,7 @@ type sharedIndexInformer struct {
 
 	// objectType is an example object of the type this informer is expected to handle. If set, an event
 	// with an object with a mismatching type is dropped instead of being delivered to listeners.
+	// 表示当前Informer期望关注的类型，主要是GVK信息
 	objectType runtime.Object
 
 	// objectDescription is the description of this informer's objects. This typically defaults to
@@ -371,6 +380,7 @@ type sharedIndexInformer struct {
 
 	// resyncCheckPeriod is how often we want the reflector's resync timer to fire so it can call
 	// shouldResync to check if any of our listeners need a resync.
+	// Reflector的resync计时器计时间隔，通知所有的listener执行resync
 	resyncCheckPeriod time.Duration
 	// defaultEventHandlerResyncPeriod is the default resync period for any handlers added via
 	// AddEventHandler (i.e. they don't specify one and just want to use the shared informer's default
@@ -492,14 +502,14 @@ func (s *sharedIndexInformer) Run(stopCh <-chan struct{}) {
 	defer wg.Wait()              // Wait for Processor to stop
 	defer close(processorStopCh) // Tell Processor to stop
 	wg.StartWithChannel(processorStopCh, s.cacheMutationDetector.Run)
-	wg.StartWithChannel(processorStopCh, s.processor.run)
+	wg.StartWithChannel(processorStopCh, s.processor.run) // processor的run方法
 
 	defer func() {
 		s.startedLock.Lock()
 		defer s.startedLock.Unlock()
 		s.stopped = true // Don't want any new listeners
 	}()
-	s.controller.Run(stopCh)
+	s.controller.Run(stopCh) // controller的Run()
 }
 
 func (s *sharedIndexInformer) HasStarted() bool {
@@ -629,6 +639,7 @@ func (s *sharedIndexInformer) AddEventHandlerWithResyncPeriod(handler ResourceEv
 	return handle, nil
 }
 
+// processLoop中的PopProcessFunc由HandleDeltas()方法来实现
 func (s *sharedIndexInformer) HandleDeltas(obj interface{}, isInInitialList bool) error {
 	s.blockDeltas.Lock()
 	defer s.blockDeltas.Unlock()
@@ -863,6 +874,7 @@ func (p *sharedProcessor) resyncCheckPeriodChanged(resyncCheckPeriod time.Durati
 //
 // processorListener also keeps track of the adjusted requested resync
 // period of the listener.
+// processorListener有三个主要方法run()、add(notification interface{})、pop()
 type processorListener struct {
 	nextCh chan interface{}
 	addCh  chan interface{}
@@ -927,7 +939,7 @@ func (p *processorListener) add(notification interface{}) {
 	if a, ok := notification.(addNotification); ok && a.isInInitialList {
 		p.syncTracker.Start()
 	}
-	p.addCh <- notification
+	p.addCh <- notification // 将通知放到addCh中，所以下面的pop()方法中先执行到的case是第二个
 }
 
 func (p *processorListener) pop() {
@@ -938,6 +950,7 @@ func (p *processorListener) pop() {
 	var notification interface{}
 	for {
 		select {
+		// 下面将获取到的通知添加到nextCh中，供run()方法中消费
 		case nextCh <- notification:
 			// Notification dispatched
 			var ok bool
@@ -945,6 +958,7 @@ func (p *processorListener) pop() {
 			if !ok { // Nothing to pop
 				nextCh = nil // Disable this select case
 			}
+		// 逻辑从这里开始，从addCh中提取通知
 		case notificationToAdd, ok := <-p.addCh:
 			if !ok {
 				return
@@ -954,7 +968,7 @@ func (p *processorListener) pop() {
 				notification = notificationToAdd
 				nextCh = p.nextCh
 			} else { // There is already a notification waiting to be dispatched
-				p.pendingNotifications.WriteOne(notificationToAdd)
+				p.pendingNotifications.WriteOne(notificationToAdd) // 新添加的通知丢到pendingNotifications中
 			}
 		}
 	}
@@ -967,7 +981,7 @@ func (p *processorListener) run() {
 	// delivering again.
 	stopCh := make(chan struct{})
 	wait.Until(func() {
-		for next := range p.nextCh {
+		for next := range p.nextCh { // 从nextCh中拿通知，然后根据类型去调用ResourceEventHandler的OnUpdate、OnAdd、OnDelete
 			switch notification := next.(type) {
 			case updateNotification:
 				p.handler.OnUpdate(notification.oldObj, notification.newObj)

@@ -37,6 +37,7 @@ import (
 //
 // Reflector knows how to watch a server and update a Store.  This
 // package provides a variety of implementations of Store.
+// Indexer接口类型
 type Store interface {
 
 	// Add adds the given object to the accumulator associated with the given object's key
