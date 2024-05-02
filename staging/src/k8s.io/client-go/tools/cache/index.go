@@ -33,27 +33,34 @@ import (
 //  3. an "indexed value", which is produced by an IndexFunc and
 //     can be a field value or any other string computed from the object.
 //
-// 存储索引器，key为索引器名称，value为索引器的视线函数
+// Indexer接口主要是在Store接口的基础上拓展了对象的检索功能
+// Indexer的默认实现是cache，cache定义在store.go中
 type Indexer interface {
 	Store
 	// Index returns the stored objects whose set of indexed values
 	// intersects the set of indexed values of the given object, for
 	// the named index
+	// 根据索引名和给定的对象返回符合条件的所有对象
 	Index(indexName string, obj interface{}) ([]interface{}, error)
 	// IndexKeys returns the storage keys of the stored objects whose
 	// set of indexed values for the named index includes the given
 	// indexed value
+	// 根据索引名和索引值返回符合条件的所有对象的key
 	IndexKeys(indexName, indexedValue string) ([]string, error)
 	// ListIndexFuncValues returns all the indexed values of the given index
+	// 列出索引函数计算出来的所有索引值
 	ListIndexFuncValues(indexName string) []string
 	// ByIndex returns the stored objects whose set of indexed values
 	// for the named index includes the given indexed value
+	// 根据索引名和索引值返回符合条件的所有对象
 	ByIndex(indexName, indexedValue string) ([]interface{}, error)
 	// GetIndexers return the indexers
+	// 获取所有的Indexers，对应map[string]IndexFunc类型
 	GetIndexers() Indexers
 
 	// AddIndexers adds more indexers to this store.  If you call this after you already have data
 	// in the store, the results are undefined.
+	// 这个方法要在数据加入存储前调用，添加更多的索引方法，默认只通过namespace检索
 	AddIndexers(newIndexers Indexers) error
 }
 
@@ -86,6 +93,7 @@ const (
 )
 
 // MetaNamespaceIndexFunc is a default index function that indexes based on an object's namespace
+// IndexFunc的默认实现
 func MetaNamespaceIndexFunc(obj interface{}) ([]string, error) {
 	meta, err := meta.Accessor(obj)
 	if err != nil {

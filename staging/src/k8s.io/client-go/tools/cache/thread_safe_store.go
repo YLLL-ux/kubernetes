@@ -18,8 +18,9 @@ package cache
 
 import (
 	"fmt"
-	"k8s.io/klog/v2"
 	"sync"
+
+	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -39,6 +40,7 @@ import (
 // modifying objects stored by the indexers (if any) will *not* automatically lead
 // to a re-index. So it's not a good idea to directly modify the objects returned by
 // Get/List, in general.
+// Indexer的多数方法是直接调用内部cacheStorage属性的方法实现的
 type ThreadSafeStore interface {
 	Add(key string, obj interface{})
 	Update(key string, obj interface{})
@@ -73,23 +75,25 @@ func (i *storeIndex) reset() {
 }
 
 func (i *storeIndex) getKeysFromIndex(indexName string, obj interface{}) (sets.String, error) {
+	// 提取索引函数，比如通过namespace提取到MetaNamespaceIndexFunc
 	indexFunc := i.indexers[indexName]
 	if indexFunc == nil {
 		return nil, fmt.Errorf("Index with name %s does not exist", indexName)
 	}
 
+	// 对象丢进去拿到索引值，比如default
 	indexedValues, err := indexFunc(obj)
 	if err != nil {
 		return nil, err
 	}
-	index := i.indices[indexName]
+	index := i.indices[indexName] // indexName如namespace，这里可以查到Index
 
 	var storeKeySet sets.String
-	if len(indexedValues) == 1 {
+	if len(indexedValues) == 1 { // 多数情况对应索引值为1的场景，比如用namespace时，值就是唯一的
 		// In majority of cases, there is exactly one value matching.
 		// Optimize the most common path - deduping is not needed here.
 		storeKeySet = index[indexedValues[0]]
-	} else {
+	} else { // 对应索引值不为1的场景
 		// Need to de-dupe the return list.
 		// Since multiple keys are allowed, this can happen.
 		storeKeySet = sets.String{}
@@ -145,31 +149,34 @@ func (i *storeIndex) addIndexers(newIndexers Indexers) error {
 // - for update you must provide both the oldObj and the newObj
 // - for delete you must provide only the oldObj
 // updateIndices must be called from a function that already has a lock on the cache
+// 创建、更新、删除的入口都是这个方法，差异点在于create创建下的参数只传递newObj，update场景下需要传递oldObj和newObj，而delete场景只传递oldObj
 func (i *storeIndex) updateIndices(oldObj interface{}, newObj interface{}, key string) {
 	var oldIndexValues, indexValues []string
 	var err error
+	// 所有逻辑都在for循环中
 	for name, indexFunc := range i.indexers {
-		if oldObj != nil {
+		if oldObj != nil { // oldObj是否存在
 			oldIndexValues, err = indexFunc(oldObj)
-		} else {
+		} else { // 相当于置空操作
 			oldIndexValues = oldIndexValues[:0]
 		}
 		if err != nil {
 			panic(fmt.Errorf("unable to calculate an index entry for key %q on index %q: %v", key, name, err))
 		}
 
-		if newObj != nil {
+		if newObj != nil { // newObj是否存在
 			indexValues, err = indexFunc(newObj)
-		} else {
+		} else { // 相当于置空操作
 			indexValues = indexValues[:0]
 		}
 		if err != nil {
 			panic(fmt.Errorf("unable to calculate an index entry for key %q on index %q: %v", key, name, err))
 		}
 
+		// 拿到一个Index，对应类型map[string]sets.String
 		index := i.indices[name]
 		if index == nil {
-			index = Index{}
+			index = Index{} // 如果map不存在则初始化一个
 			i.indices[name] = index
 		}
 
@@ -178,9 +185,11 @@ func (i *storeIndex) updateIndices(oldObj interface{}, newObj interface{}, key s
 			continue
 		}
 
+		// 处理oldIndexValues，也就是需要删除的索引值，这里保留了一个索引对应一个值的场景
 		for _, value := range oldIndexValues {
 			i.deleteKeyFromIndex(key, value, index)
 		}
+		// 处理indexValues，也是就是需要添加的索引值，这里同样也保留了一个索引对应一个值的场景
 		for _, value := range indexValues {
 			i.addKeyToIndex(key, value, index)
 		}
@@ -229,9 +238,9 @@ func (c *threadSafeMap) Add(key string, obj interface{}) {
 func (c *threadSafeMap) Update(key string, obj interface{}) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	oldObject := c.items[key]
-	c.items[key] = obj
-	c.index.updateIndices(oldObject, obj, key)
+	oldObject := c.items[key]                  // c.items是map[string]interface{}类型
+	c.items[key] = obj                         // 在items map中添加这个对象
+	c.index.updateIndices(oldObject, obj, key) // 核心逻辑updateIndices()
 }
 
 func (c *threadSafeMap) Delete(key string) {
@@ -286,6 +295,7 @@ func (c *threadSafeMap) Replace(items map[string]interface{}, resourceVersion st
 
 // Index returns a list of items that match the given object on the index function.
 // Index is thread-safe so long as you treat all items as immutable.
+// 其作用是给定一个obj和indexName，比如pod1和namespace，然后返回pod1所在namespace下的所有pod
 func (c *threadSafeMap) Index(indexName string, obj interface{}) ([]interface{}, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -296,6 +306,7 @@ func (c *threadSafeMap) Index(indexName string, obj interface{}) ([]interface{},
 	}
 
 	list := make([]interface{}, 0, storeKeySet.Len())
+	// storeKey也就是default/pod_1这种字符串，通过其就可以到items map中提取需要的obj了
 	for storeKey := range storeKeySet {
 		list = append(list, c.items[storeKey])
 	}

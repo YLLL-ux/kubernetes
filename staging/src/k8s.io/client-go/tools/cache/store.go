@@ -37,7 +37,6 @@ import (
 //
 // Reflector knows how to watch a server and update a Store.  This
 // package provides a variety of implementations of Store.
-// Indexer接口类型
 type Store interface {
 
 	// Add adds the given object to the accumulator associated with the given object's key
@@ -73,6 +72,7 @@ type Store interface {
 }
 
 // KeyFunc knows how to make a key from an object. Implementations should be deterministic.
+// 给一个对象返回一个字符串类型的key
 type KeyFunc func(obj interface{}) (string, error)
 
 // KeyError will be returned any time a KeyFunc gives an error; it includes the object
@@ -106,11 +106,12 @@ type ExplicitKey string
 // necessarily strings.
 //
 // TODO maybe some day?: change Store to be keyed differently
+// KeyFunc的一个默认实现
 func MetaNamespaceKeyFunc(obj interface{}) (string, error) {
 	if key, ok := obj.(ExplicitKey); ok {
 		return string(key), nil
 	}
-	objName, err := ObjectToName(obj)
+	objName, err := ObjectToName(obj) // 返回值为<namespace><name>，如果namespace为空，则直接返回name
 	if err != nil {
 		return "", err
 	}
@@ -156,6 +157,7 @@ func SplitMetaNamespaceKey(key string) (namespace, name string, err error) {
 
 // `*cache` implements Indexer in terms of a ThreadSafeStore and an
 // associated KeyFunc.
+// Indexer的默认实现
 type cache struct {
 	// cacheStorage bears the burden of thread safety for the cache
 	cacheStorage ThreadSafeStore
