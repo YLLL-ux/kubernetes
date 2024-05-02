@@ -62,7 +62,7 @@ type Queue interface {
 	// return that (key, accumulator) association to the Queue as part
 	// of the atomic processing and (b) return the inner error from
 	// Pop.
-	Pop(PopProcessFunc) (interface{}, error)
+	Pop(PopProcessFunc) (interface{}, error) //会阻塞，直到有一个元素可以被pop出来，或者关闭队列
 
 	// AddIfNotPresent puts the given accumulator into the Queue (in
 	// association with the accumulator's key) if and only if that key

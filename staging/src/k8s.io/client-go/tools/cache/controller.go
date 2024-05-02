@@ -184,7 +184,7 @@ func (c *controller) LastSyncResourceVersion() string {
 // actually exit when the controller is stopped. Or just give up on this stuff
 // ever being stoppable. Converting this whole package to use Context would
 // also be helpful.
-// 将DetailFIFO中取出的对象传给process回调函数
+// 将DeltaFIFO中取出的对象传给process回调函数
 func (c *controller) processLoop() {
 	for {
 		obj, err := c.config.Queue.Pop(PopProcessFunc(c.config.Process))
@@ -194,7 +194,7 @@ func (c *controller) processLoop() {
 			}
 			if c.config.RetryOnError {
 				// This is the safe way to re-enqueue.
-				c.config.Queue.AddIfNotPresent(obj)
+				c.config.Queue.AddIfNotPresent(obj) // Pop()内部已经调用了addIfNotPresent()，这里重复调用一次只是提高了可靠性
 			}
 		}
 	}
