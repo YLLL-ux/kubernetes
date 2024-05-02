@@ -25,20 +25,13 @@ import (
 
 // Interface FIFO队列
 type Interface interface {
-	// Add 给队列添加元素
-	Add(item interface{})
-	// Len 返回队列长度
-	Len() int
-	// Get 获取队列头部的一个元素
-	Get() (item interface{}, shutdown bool)
-	// Done 标记队列中该元素已被处理
-	Done(item interface{})
-	// ShutDown 关闭队列
-	ShutDown()
-	// ShutDownWithDrain 用Drain方式关闭队列
-	ShutDownWithDrain()
-	// ShuttingDown 查询队列是否正在关闭
-	ShuttingDown() bool
+	Add(item interface{})                   // 添加一个元素
+	Len() int                               // 元素个数
+	Get() (item interface{}, shutdown bool) // 获取一个元素，第二个返回值和channel类似，标记队列是否关闭了
+	Done(item interface{})                  // 标记一个元素已经处理完
+	ShutDown()                              // 关闭队列
+	ShutDownWithDrain()                     // 关闭队列，但是等待队列中元素处理完
+	ShuttingDown() bool                     // 标记当前channel是否正在关闭
 }
 
 // QueueConfig specifies optional configurations to customize an Interface.
@@ -124,20 +117,19 @@ type Type struct {
 	// queue defines the order in which we will work on items. Every
 	// element of queue should be in the dirty set and not in the
 	// processing set.
-	// 实际存储的地方
+	// 存储元素的处理顺序，里面所有元素在dirty集合中应该都有，而不能出现在processing集群中
 	queue []t
 
 	// dirty defines all of the items that need to be processed.
-	// 1.保证去重
-	// 2.保证一个元素只会被处理一次
+	// 标记所有需要被处理的元素
 	dirty set
 
 	// Things that are currently being processed are in the processing set.
 	// These things may be simultaneously in the dirty set. When we finish
 	// processing something and remove it from this set, we'll check if
 	// it's in the dirty set, and if so, add it to the queue.
-	// 用于标记一个元素是否正在被处理
-	processing set
+	// 当前正在被处理的元素，当处理完后，需要检查该元素是否在dirty集合中，如果在则添加到queue队列中
+	processing set // 存放的是当前正在处理的元素，也就是说这个元素来自queue出队的元素，同时这个元素也会被从dirty中删除
 
 	cond *sync.Cond
 
@@ -175,22 +167,23 @@ func (s set) len() int {
 func (q *Type) Add(item interface{}) {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
-	if q.shuttingDown {
+	if q.shuttingDown { // 如果queue正在被关闭，则直接返回
 		return
 	}
-	if q.dirty.has(item) {
+	if q.dirty.has(item) { // 如果dirty set中已经存在该元素，则直接返回
 		return
 	}
 
 	q.metrics.add(item)
 
-	q.dirty.insert(item)
-	if q.processing.has(item) {
+	q.dirty.insert(item)        // 添加到dirty set中
+	if q.processing.has(item) { // 如果正在被处理，则返回
 		return
 	}
 
+	// 如果没有正在被处理，则添加到queue队列中
 	q.queue = append(q.queue, item)
-	q.cond.Signal()
+	q.cond.Signal() // 通知getter有新的元素
 }
 
 // Len returns the current queue length, for informational purposes only. You
@@ -208,23 +201,25 @@ func (q *Type) Len() int {
 func (q *Type) Get() (item interface{}, shutdown bool) {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
+	// 如果queue为空，并且没有正在关闭，则等待下一个元素的到来
 	for len(q.queue) == 0 && !q.shuttingDown {
 		q.cond.Wait()
 	}
+	// 这时如果queue的长度还是0，则说明shuttingDown为true，所以直接返回
 	if len(q.queue) == 0 {
 		// We must be shutting down.
 		return nil, true
 	}
 
-	item = q.queue[0]
+	item = q.queue[0] // 获取队列queue的第一个元素
 	// The underlying array still exists and reference this object, so the object will not be garbage collected.
-	q.queue[0] = nil
-	q.queue = q.queue[1:]
+	q.queue[0] = nil      // 这里置为nil是为了让底层数组不在引用该对象，从而可以进行GC，防止内存泄露
+	q.queue = q.queue[1:] // 更新queue
 
 	q.metrics.get(item)
 
-	q.processing.insert(item)
-	q.dirty.delete(item)
+	q.processing.insert(item) // 将刚才获取的第一个元素放到processing集合中
+	q.dirty.delete(item)      // 在dirty集合中删除该元素
 
 	return item, false
 }
@@ -238,10 +233,10 @@ func (q *Type) Done(item interface{}) {
 
 	q.metrics.done(item)
 
-	q.processing.delete(item)
-	if q.dirty.has(item) {
+	q.processing.delete(item) // 在processing集合中删除该元素
+	if q.dirty.has(item) {    // 如果dirty中还有，则说明还需要再次处理，放到queue中
 		q.queue = append(q.queue, item)
-		q.cond.Signal()
+		q.cond.Signal() // 通知getter有新的元素
 	} else if q.processing.len() == 0 {
 		q.cond.Signal()
 	}
