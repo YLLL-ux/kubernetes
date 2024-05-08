@@ -389,6 +389,8 @@ func (f *StorageFactoryRestOptionsFactory) GetRESTOptions(resource schema.GroupR
 		return generic.RESTOptions{}, fmt.Errorf("unable to find storage destination for %v, due to %v", resource, err.Error())
 	}
 
+	// kubernetes是默认开启缓存功能的，可通过--watch-cache进行设置
+	// 如果不启用WatchCache功能，api-server会通过generic.UndecoratedStorage函数直接创建UnderlyingStorage底层存储对象并返回
 	ret := generic.RESTOptions{
 		StorageConfig:             storageConfig,
 		Decorator:                 generic.UndecoratedStorage,
@@ -413,6 +415,7 @@ func (f *StorageFactoryRestOptionsFactory) GetRESTOptions(resource schema.GroupR
 			ret.Decorator = generic.UndecoratedStorage
 		} else {
 			klog.V(3).InfoS("Using watch cache", "resource", resource)
+			// 如果api-server开启了缓存功能，则通过genericregistry.StorageWithCacher()函数创建带有缓存功能的资源对象
 			ret.Decorator = genericregistry.StorageWithCacher()
 		}
 	}
