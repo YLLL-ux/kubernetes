@@ -420,6 +420,8 @@ func (e *Store) Create(ctx context.Context, obj runtime.Object, createValidation
 		}()
 	}
 
+	// create()创建资源对象的过程
+	// 1.预处理操作
 	if err := rest.BeforeCreate(e.CreateStrategy, ctx, obj); err != nil {
 		return nil, err
 	}
@@ -445,6 +447,7 @@ func (e *Store) Create(ctx context.Context, obj runtime.Object, createValidation
 		return nil, err
 	}
 	out := e.NewFunc()
+	// 2.创建资源对象
 	if err := e.Storage.Create(ctx, key, obj, out, ttl, dryrun.IsDryRun(options.DryRun)); err != nil {
 		err = storeerr.InterpretCreateError(err, qualifiedResource, name)
 		err = rest.CheckGeneratedNameError(ctx, e.CreateStrategy, err, obj)
@@ -471,6 +474,7 @@ func (e *Store) Create(ctx context.Context, obj runtime.Object, createValidation
 	fn(ctx, true)
 
 	if e.AfterCreate != nil {
+		// 3.收尾操作
 		e.AfterCreate(out, options)
 	}
 	if e.Decorator != nil {
