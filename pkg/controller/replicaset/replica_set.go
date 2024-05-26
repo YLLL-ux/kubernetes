@@ -91,6 +91,7 @@ type ReplicaSetController struct {
 
 	// A ReplicaSet is temporarily suspended after creating/deleting these many replicas.
 	// It resumes normal action after observing the watch events for them.
+	// 允许控制器在短时间内快速创建多个副本的个数
 	burstReplicas int
 	// To allow injection of syncReplicaSet for testing.
 	syncHandler func(ctx context.Context, rsKey string) error
@@ -564,6 +565,7 @@ func (rsc *ReplicaSetController) processNextWorkItem(ctx context.Context) bool {
 // Does NOT modify <filteredPods>.
 // It will requeue the replica set in case of an error while creating/deleting pods.
 func (rsc *ReplicaSetController) manageReplicas(ctx context.Context, filteredPods []*v1.Pod, rs *apps.ReplicaSet) error {
+	// 比较当前正在运行的副本数与指定的副本数量
 	diff := len(filteredPods) - int(*(rs.Spec.Replicas))
 	rsKey, err := controller.KeyFunc(rs)
 	if err != nil {
@@ -571,7 +573,8 @@ func (rsc *ReplicaSetController) manageReplicas(ctx context.Context, filteredPod
 		return nil
 	}
 	logger := klog.FromContext(ctx)
-	if diff < 0 {
+	if diff < 0 { // 副本数不够，需要创建一些pod，来满足期望值
+		// 获取绝对值
 		diff *= -1
 		if diff > rsc.burstReplicas {
 			diff = rsc.burstReplicas
@@ -614,7 +617,7 @@ func (rsc *ReplicaSetController) manageReplicas(ctx context.Context, filteredPod
 			}
 		}
 		return err
-	} else if diff > 0 {
+	} else if diff > 0 { // 副本数过多，需要删除一些pod，来满足期望值
 		if diff > rsc.burstReplicas {
 			diff = rsc.burstReplicas
 		}
@@ -624,6 +627,7 @@ func (rsc *ReplicaSetController) manageReplicas(ctx context.Context, filteredPod
 		utilruntime.HandleError(err)
 
 		// Choose which Pods to delete, preferring those in earlier phases of startup.
+		// 选择影响面较小的pod进行删除
 		podsToDelete := getPodsToDelete(filteredPods, relatedPods, diff)
 
 		// Snapshot the UIDs (ns/name) of the pods we're expecting to see
@@ -643,6 +647,7 @@ func (rsc *ReplicaSetController) manageReplicas(ctx context.Context, filteredPod
 				if err := rsc.podControl.DeletePod(ctx, rs.Namespace, targetPod.Name, rs); err != nil {
 					// Decrement the expected number of deletes because the informer won't observe this deletion
 					podKey := controller.PodKey(targetPod)
+					// 处理观察到的删除事件
 					rsc.expectations.DeletionObserved(logger, rsKey, podKey)
 					if !apierrors.IsNotFound(err) {
 						logger.V(2).Info("Failed to delete pod, decremented expectations", "pod", podKey, "kind", rsc.Kind, "replicaSet", klog.KObj(rs))
@@ -819,10 +824,16 @@ func (rsc *ReplicaSetController) getIndirectlyRelatedPods(logger klog.Logger, rs
 	return relatedPods, nil
 }
 
+/*
+filteredPods: 已经根据某些条件过滤后的pod
+relatedPods: 与待删除pod相关的其他pod
+diff: 表示 filteredPods 中需要删除的 Pod 数量与 relatedPods 中 Pod 数量之间的差异
+*/
 func getPodsToDelete(filteredPods, relatedPods []*v1.Pod, diff int) []*v1.Pod {
 	// No need to sort pods if we are about to delete all of them.
 	// diff will always be <= len(filteredPods), so not need to handle > case.
-	if diff < len(filteredPods) {
+	if diff < len(filteredPods) { // 不是删除所有pod，需要进一步知道需要删除哪些pods
+		// 对同一节点上的pod，按照pod的相关性进行排序
 		podsWithRanks := getPodsRankedByRelatedPodsOnSameNode(filteredPods, relatedPods)
 		sort.Sort(podsWithRanks)
 		reportSortingDeletionAgeRatioMetric(filteredPods, diff)
@@ -855,14 +866,16 @@ func reportSortingDeletionAgeRatioMetric(filteredPods []*v1.Pod, diff int) {
 // active pods in relatedPods that are colocated on the same node with the pod.
 // relatedPods generally should be a superset of podsToRank.
 func getPodsRankedByRelatedPodsOnSameNode(podsToRank, relatedPods []*v1.Pod) controller.ActivePodsWithRanks {
+	// 记录将要被删除的pod在哪个节点上
 	podsOnNode := make(map[string]int)
 	for _, pod := range relatedPods {
 		if controller.IsPodActive(pod) {
 			podsOnNode[pod.Spec.NodeName]++
 		}
 	}
+	// 记录同一节点上将要被删除的不同pod的数量
 	ranks := make([]int, len(podsToRank))
-	for i, pod := range podsToRank {
+	for i, pod := range podsToRank { // 遍历过滤出的pods
 		ranks[i] = podsOnNode[pod.Spec.NodeName]
 	}
 	return controller.ActivePodsWithRanks{Pods: podsToRank, Rank: ranks, Now: metav1.Now()}
