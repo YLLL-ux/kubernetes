@@ -23,9 +23,21 @@ import (
 	_ "k8s.io/component-base/logs/json/register" // for JSON log format registration
 	_ "k8s.io/component-base/metrics/prometheus/clientgo"
 	_ "k8s.io/component-base/metrics/prometheus/version" // for version metric registration
+
 	"k8s.io/kubernetes/cmd/kube-scheduler/app"
 )
 
+/*
+kube-scheduler组件自动流程
+1.内置调度算法注册
+2.cobra命令行参数解析
+3.实例化scheduler对象
+4.运行EventBroadcaster事件管理器
+5.运行http或https服务
+6.运行Informer同步资源
+7.领导者选组实例化
+8.运行sched.Run调度器
+*/
 func main() {
 	command := app.NewSchedulerCommand()
 	code := cli.Run(command)

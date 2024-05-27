@@ -338,10 +338,12 @@ func Setup(ctx context.Context, opts *options.Options, outOfTreeRegistryOptions 
 	}
 
 	// Get the completed config
-	cc := c.Complete()
+	cc := c.Complete() // 构建配置文件
 
+	// 动态地注册和配置外部插件或扩展
 	outOfTreeRegistry := make(runtime.Registry)
 	for _, option := range outOfTreeRegistryOptions {
+		// 应用每个option
 		if err := option(outOfTreeRegistry); err != nil {
 			return nil, nil, err
 		}

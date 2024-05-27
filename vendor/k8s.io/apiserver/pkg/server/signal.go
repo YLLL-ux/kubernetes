@@ -45,6 +45,7 @@ func SetupSignalContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	signal.Notify(shutdownHandler, shutdownSignals...)
 	go func() {
+		// 第一个信号关闭ctx，第二个信号退出程序
 		<-shutdownHandler
 		cancel()
 		<-shutdownHandler

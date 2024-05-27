@@ -401,6 +401,7 @@ func buildQueueingHintMap(es []framework.EnqueueExtensions) internalqueue.Queuei
 }
 
 // Run begins watching and scheduling. It starts scheduling and blocked until the context is done.
+// 运行调度器
 func (sched *Scheduler) Run(ctx context.Context) {
 	logger := klog.FromContext(ctx)
 	sched.SchedulingQueue.Run(logger)
