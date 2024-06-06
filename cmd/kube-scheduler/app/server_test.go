@@ -195,13 +195,13 @@ leaderElection:
 	}
 
 	testcases := []struct {
-		name                 string
-		flags                []string
-		registryOptions      []Option
-		restoreFeatures      map[featuregate.Feature]bool
-		wantPlugins          map[string]*config.Plugins
-		wantLeaderElection   *componentbaseconfig.LeaderElectionConfiguration
-		wantClientConnection *componentbaseconfig.ClientConnectionConfiguration
+		name                 string                                             //测试用例名
+		flags                []string                                           //命令行参数或环境变量的值
+		registryOptions      []Option                                           //插件选项
+		restoreFeatures      map[featuregate.Feature]bool                       //恢复功能，用于在测试结束后可以用来恢复这些特性的状态
+		wantPlugins          map[string]*config.Plugins                         //期望插件，用于存储期望的插件列表
+		wantLeaderElection   *componentbaseconfig.LeaderElectionConfiguration   //期望领导选举配置
+		wantClientConnection *componentbaseconfig.ClientConnectionConfiguration //期望客户端连接配置
 	}{
 		{
 			name: "default config with an alpha feature enabled",
