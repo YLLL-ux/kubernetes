@@ -26,7 +26,9 @@ import (
 )
 
 func main() {
+	// 1.使用cobra构建命令行
 	command := cmd.NewDefaultKubectlCommand()
+	// 2.运行命令行
 	if err := cli.RunNoErrOutput(command); err != nil {
 		// Pretty-print the error and exit with an error.
 		util.CheckErr(err)

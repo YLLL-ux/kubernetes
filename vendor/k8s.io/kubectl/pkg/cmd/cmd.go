@@ -109,8 +109,10 @@ func NewDefaultKubectlCommand() *cobra.Command {
 
 // NewDefaultKubectlCommandWithArgs creates the `kubectl` command with arguments
 func NewDefaultKubectlCommandWithArgs(o KubectlOptions) *cobra.Command {
+	// 3.创建kubectl命令
 	cmd := NewKubectlCommand(o)
 
+	// 检查是否是调用插件...,如果是，则调用HandlePluginCommand
 	if o.PluginHandler == nil {
 		return cmd
 	}
@@ -310,7 +312,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	warningHandler := rest.NewWarningWriter(o.IOStreams.ErrOut, rest.WarningWriterOptions{Deduplicate: true, Color: term.AllowsColorOutput(o.IOStreams.ErrOut)})
 	warningsAsErrors := false
 	// Parent command to which all subcommands are added.
-	// 实例化rootCmd对象
+	// 4.kubectl rootCmd配置，作为所有子命令的父命令
 	cmds := &cobra.Command{
 		Use:   "kubectl",
 		Short: i18n.T("kubectl controls the Kubernetes cluster manager"),
@@ -322,7 +324,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 		Run: runHelp,
 		// Hook before and after Run initialize and write profiles to disk,
 		// respectively.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { //从父命令继承过来的PreRun
 			rest.SetDefaultWarningHandler(warningHandler)
 
 			if cmd.Name() == cobra.ShellCompRequestCmd {
@@ -333,7 +335,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 
 			return initProfiling()
 		},
-		PersistentPostRunE: func(*cobra.Command, []string) error {
+		PersistentPostRunE: func(*cobra.Command, []string) error { //从父命令继承过来的PostRun
 			if err := flushProfiling(); err != nil {
 				return err
 			}
@@ -355,6 +357,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	// when adding them with hyphen instead of the original name.
 	cmds.SetGlobalNormalizationFunc(cliflag.WarnWordSepNormalizeFunc)
 
+	// 5.获取cobra.command的FlagSet对象，用于后续在它上面追加各种参数，比如--kubeconfig等
 	flags := cmds.PersistentFlags()
 
 	addProfilingFlags(flags)
@@ -371,7 +374,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	// Updates hooks to add kubectl command headers: SIG CLI KEP 859.
 	addCmdHeaderHooks(cmds, kubeConfigFlags)
 
-	// 实例化factory接口
+	// 6.获取kubeconfig的ConfigFlags再次封装，以及封装标准输出和输入
 	f := cmdutil.NewFactory(matchVersionKubeConfigFlags)
 
 	// Proxy command is incompatible with CommandHeaderRoundTripper, so
@@ -385,7 +388,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 	getCmd := get.NewCmdGet("kubectl", f, o.IOStreams)
 	getCmd.ValidArgsFunction = utilcomp.ResourceTypeAndNameCompletionFunc(f)
 
-	// 定义kubelet不同的命令类别
+	// 7.将子命令分组并添加到kubectl命令中
 	groups := templates.CommandGroups{
 		{
 			// 基础cmd（初级）
