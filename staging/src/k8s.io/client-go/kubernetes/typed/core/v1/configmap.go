@@ -98,18 +98,24 @@ func (c *configMaps) List(ctx context.Context, opts metav1.ListOptions) (result 
 }
 
 // Watch returns a watch.Interface that watches the requested configMaps.
+/*
+	发起如下请求：
+	watch, err := client.CoreV1().ConfigMaps(namespace).Watch(context.Background(), metav1.ListOptions{LabelSelector: "example==" + label})
+	最终拼接出来的URL如下：
+	url := "https://127.0.0.1:50761/api/v1/namespaces/default/configmaps?labelSelector=example==watch-typed-simple-rqzvds&watch=true"
+*/
 func (c *configMaps) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
 	}
 	opts.Watch = true
-	return c.client.Get().
-		Namespace(c.ns).
-		Resource("configmaps").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Watch(ctx)
+	return c.client.Get(). // request
+				Namespace(c.ns).                               // request.namespaceSet = true && request.namespace = c.ns
+				Resource("configmaps").                        // request.resource = "configmaps"
+				VersionedParams(&opts, scheme.ParameterCodec). // request.params = {"watch": ["true"], "LabelSelector": ["example==label"]}
+				Timeout(timeout).
+				Watch(ctx)
 }
 
 // Create takes the representation of a configMap and creates it.  Returns the server's representation of the configMap, and an error, if there is any.
