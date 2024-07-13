@@ -97,15 +97,19 @@ type KubeControllerManagerOptions struct {
 }
 
 // NewKubeControllerManagerOptions creates a new KubeControllerManagerOptions with a default config.
+// 使用默认config构建kcm的options
 func NewKubeControllerManagerOptions() (*KubeControllerManagerOptions, error) {
+	// 1.构建kcm组件的默认config
 	componentConfig, err := NewDefaultComponentConfig()
 	if err != nil {
 		return nil, err
 	}
 
+	// 2.初始化kcm的options对象
 	s := KubeControllerManagerOptions{
-		Generic:         cmoptions.NewGenericControllerManagerConfigurationOptions(&componentConfig.Generic),
+		Generic:         cmoptions.NewGenericControllerManagerConfigurationOptions(&componentConfig.Generic), // 不同controller的公共信息
 		KubeCloudShared: cpoptions.NewKubeCloudSharedOptions(&componentConfig.KubeCloudShared),
+		// 注册不同资源的controller
 		ServiceController: &cpoptions.ServiceControllerOptions{
 			ServiceControllerConfiguration: &componentConfig.ServiceController,
 		},
@@ -188,20 +192,24 @@ func NewKubeControllerManagerOptions() (*KubeControllerManagerOptions, error) {
 		Logs:           logs.NewOptions(),
 	}
 
+	// 3.设置认证和授权选项，使得remote kubeConfig是可选的
 	s.Authentication.RemoteKubeConfigFileOptional = true
 	s.Authorization.RemoteKubeConfigFileOptional = true
 
+	// 4.设置安全服务选项
 	// Set the PairName but leave certificate directory blank to generate in-memory by default
-	s.SecureServing.ServerCert.CertDirectory = ""
-	s.SecureServing.ServerCert.PairName = "kube-controller-manager"
-	s.SecureServing.BindPort = ports.KubeControllerManagerPort
+	s.SecureServing.ServerCert.CertDirectory = ""                   // 证书目录
+	s.SecureServing.ServerCert.PairName = "kube-controller-manager" // 证书对名称
+	s.SecureServing.BindPort = ports.KubeControllerManagerPort      // 绑定端口
 
+	// 5.设置在GC时需要忽略的资源
 	gcIgnoredResources := make([]garbagecollectorconfig.GroupResource, 0, len(garbagecollector.DefaultIgnoredResources()))
 	for r := range garbagecollector.DefaultIgnoredResources() {
 		gcIgnoredResources = append(gcIgnoredResources, garbagecollectorconfig.GroupResource{Group: r.Group, Resource: r.Resource})
 	}
 
 	s.GarbageCollectorController.GCIgnoredResources = gcIgnoredResources
+	// 6.设置领导选取
 	s.Generic.LeaderElection.ResourceName = "kube-controller-manager"
 	s.Generic.LeaderElection.ResourceNamespace = "kube-system"
 
@@ -406,39 +414,48 @@ func (s *KubeControllerManagerOptions) Validate(allControllers []string, disable
 
 // Config return a controller manager config objective
 func (s KubeControllerManagerOptions) Config(allControllers []string, disabledByDefaultControllers []string) (*kubecontrollerconfig.Config, error) {
+	// 1.验证kcm的配置
 	if err := s.Validate(allControllers, disabledByDefaultControllers); err != nil {
 		return nil, err
 	}
 
+	// 2.生成自签名证书
 	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{netutils.ParseIPSloppy("127.0.0.1")}); err != nil {
 		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
+	// 3.构建kubeconfig
 	kubeconfig, err := clientcmd.BuildConfigFromFlags(s.Master, s.Kubeconfig)
 	if err != nil {
 		return nil, err
 	}
-	kubeconfig.DisableCompression = true
-	kubeconfig.ContentConfig.AcceptContentTypes = s.Generic.ClientConnection.AcceptContentTypes
-	kubeconfig.ContentConfig.ContentType = s.Generic.ClientConnection.ContentType
-	kubeconfig.QPS = s.Generic.ClientConnection.QPS
-	kubeconfig.Burst = int(s.Generic.ClientConnection.Burst)
+	kubeconfig.DisableCompression = true                                                        // 禁用压缩
+	kubeconfig.ContentConfig.AcceptContentTypes = s.Generic.ClientConnection.AcceptContentTypes // 接受的内容类型
+	kubeconfig.ContentConfig.ContentType = s.Generic.ClientConnection.ContentType               // 内容类型
+	kubeconfig.QPS = s.Generic.ClientConnection.QPS                                             // QPS
+	kubeconfig.Burst = int(s.Generic.ClientConnection.Burst)                                    // Burst
 
+	// 4.根据kubeconfig构建k8s-client
 	client, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, KubeControllerManagerUserAgent))
 	if err != nil {
 		return nil, err
 	}
 
+	// 5. 构建事件记录器
+	// event需要关注的内容：object、eventType、reason、message
 	eventRecorder := createRecorder(client, KubeControllerManagerUserAgent)
 
+	// 6.创建kcm的config
 	c := &kubecontrollerconfig.Config{
 		Client:        client,
 		Kubeconfig:    kubeconfig,
 		EventRecorder: eventRecorder,
 	}
+	// 7.将options应用给config对应
 	if err := s.ApplyTo(c); err != nil {
 		return nil, err
 	}
+	// 8.设置Metrics
 	s.Metrics.Apply()
 
 	return c, nil

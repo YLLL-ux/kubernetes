@@ -84,13 +84,13 @@ const (
 )
 
 // ControllerLoopMode is the kube-controller-manager's mode of running controller loops that are cloud provider dependent
-type ControllerLoopMode int
+type ControllerLoopMode int // 在KnownControllers()继续设置
 
 const (
 	// IncludeCloudLoops means the kube-controller-manager include the controller loops that are cloud provider dependent
-	IncludeCloudLoops ControllerLoopMode = iota
+	IncludeCloudLoops ControllerLoopMode = iota // 表示kcm包含依赖于云提供商的控制循环，这意味着kcm负责运行所有与云提供商相关的controller
 	// ExternalLoops means the kube-controller-manager exclude the controller loops that are cloud provider dependent
-	ExternalLoops
+	ExternalLoops // 表示kcm排除依赖于云提供商的controller，意味着kcm不会运行与云提供商相关的controller，这些controller由外部组件（比如cloud-controller-manager）来管理
 )
 
 // NewControllerManagerCommand creates a *cobra.Command object with default parameters
@@ -127,13 +127,13 @@ controller, and serviceaccounts controller.`,
 			}
 			cliflag.PrintFlags(cmd.Flags())
 
-			c, err := s.Config(KnownControllers(), ControllersDisabledByDefault.List())
+			c, err := s.Config(KnownControllers(), ControllersDisabledByDefault.List()) // 根据options构建kcm的config对象
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
 
-			if err := Run(c.Complete(), wait.NeverStop); err != nil {
+			if err := Run(c.Complete(), wait.NeverStop); err != nil { // 运行kcm
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
@@ -175,42 +175,50 @@ func ResyncPeriod(c *config.CompletedConfig) func() time.Duration {
 
 // Run runs the KubeControllerManagerOptions.  This should never exit.
 func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
+	// 1.记录当前k8s的版本信息
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
 	klog.InfoS("Golang settings", "GOGC", os.Getenv("GOGC"), "GOMAXPROCS", os.Getenv("GOMAXPROCS"), "GOTRACEBACK", os.Getenv("GOTRACEBACK"))
 
+	// 2.注册配置信息
 	if cfgz, err := configz.New(ConfigzName); err == nil {
 		cfgz.Set(c.ComponentConfig)
 	} else {
 		klog.Errorf("unable to register configz: %v", err)
 	}
 
+	// 3.健康检查设置
 	// Setup any healthz checks we will want to use.
 	var checks []healthz.HealthChecker
 	var electionChecker *leaderelection.HealthzAdaptor
-	if c.ComponentConfig.Generic.LeaderElection.LeaderElect {
+	if c.ComponentConfig.Generic.LeaderElection.LeaderElect { // 如果启动了LeaderElection，则创建一个leaderelection健康检查器，并添加到check-list中
 		electionChecker = leaderelection.NewLeaderHealthzAdaptor(time.Second * 20)
 		checks = append(checks, electionChecker)
 	}
 	healthzHandler := controllerhealthz.NewMutableHealthzHandler(checks...)
 
+	// 4.启动Http-server
 	// Start the controller manager HTTP server
 	// unsecuredMux is the handler for these controller *after* authn/authz filters have been applied
 	var unsecuredMux *mux.PathRecorderMux
-	if c.SecureServing != nil {
+	if c.SecureServing != nil { // 如果配置了安全服务，则创建一个基本的http处理器，并构建HandlerChain
 		unsecuredMux = genericcontrollermanager.NewBaseHandler(&c.ComponentConfig.Generic.Debugging, healthzHandler)
 		handler := genericcontrollermanager.BuildHandlerChain(unsecuredMux, &c.Authorization, &c.Authentication)
 		// TODO: handle stoppedCh and listenerStoppedCh returned by c.SecureServing.Serve
+		// 启动安全的http-server
 		if _, _, err := c.SecureServing.Serve(handler, 0, stopCh); err != nil {
 			return err
 		}
 	}
 
+	// 5.创建客户端构建器，用于后续的控制器初始化
 	clientBuilder, rootClientBuilder := createClientBuilders(c)
 
+	// 6.定义启动Service Account Token Controller的函数
 	saTokenControllerInitFunc := serviceAccountTokenControllerStarter{rootClientBuilder: rootClientBuilder}.startServiceAccountTokenController
 
+	// 7.定义运行SATokenController的函数
 	run := func(ctx context.Context, startSATokenController InitFunc, initializersFunc ControllerInitializersFunc) {
 
 		controllerContext, err := CreateControllerContext(c, rootClientBuilder, clientBuilder, ctx.Done())
@@ -229,12 +237,14 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		select {}
 	}
 
+	// 8.如果不进行领导者选举，则直接运行控制器
 	// No leader election, run directly
 	if !c.ComponentConfig.Generic.LeaderElection.LeaderElect {
 		run(context.TODO(), saTokenControllerInitFunc, NewControllerInitializers)
 		panic("unreachable")
 	}
 
+	// 9.获取主机名并生成唯一标识
 	id, err := os.Hostname()
 	if err != nil {
 		return err
@@ -243,6 +253,7 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id = id + "_" + string(uuid.NewUUID())
 
+	// 10.领导者迁移处理
 	// leaderMigrator will be non-nil if and only if Leader Migration is enabled.
 	var leaderMigrator *leadermigration.LeaderMigrator = nil
 
@@ -250,7 +261,7 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 	startSATokenController := saTokenControllerInitFunc
 
 	// If leader migration is enabled, create the LeaderMigrator and prepare for migration
-	if leadermigration.Enabled(&c.ComponentConfig.Generic) {
+	if leadermigration.Enabled(&c.ComponentConfig.Generic) { // 如果启用了领导者迁移，则创建一个领导者迁移器，并修改启动Service Account Token Controller的函数
 		klog.Infof("starting leader migration")
 
 		leaderMigrator = leadermigration.NewLeaderMigrator(&c.ComponentConfig.Generic.LeaderMigration,
@@ -264,11 +275,12 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		}
 	}
 
+	// 11.启动主锁
 	// Start the main lock
 	go leaderElectAndRun(c, id, electionChecker,
 		c.ComponentConfig.Generic.LeaderElection.ResourceLock,
 		c.ComponentConfig.Generic.LeaderElection.ResourceName,
-		leaderelection.LeaderCallbacks{
+		leaderelection.LeaderCallbacks{ // 启动领导者选举，并在获得领导权后运行控制器
 			OnStartedLeading: func(ctx context.Context) {
 				initializersFunc := NewControllerInitializers
 				if leaderMigrator != nil {
@@ -285,8 +297,9 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 			},
 		})
 
+	// 12.启动迁移锁
 	// If Leader Migration is enabled, proceed to attempt the migration lock.
-	if leaderMigrator != nil {
+	if leaderMigrator != nil { // 如果启用了领导者迁移，则在Service Account Token Controller启动后，尝试获取迁移锁并运行迁移的控制器
 		// Wait for Service Account Token Controller to start before acquiring the migration lock.
 		// At this point, the main lock must have already been acquired, or the KCM process already exited.
 		// We wait for the main lock before acquiring the migration lock to prevent the situation
@@ -310,7 +323,8 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 			})
 	}
 
-	select {}
+	// 13.阻塞等待
+	select {} // 阻塞主协程，防止退出
 }
 
 // ControllerContext defines the context object for controller
@@ -379,9 +393,13 @@ type ControllerInitializersFunc func(loopMode ControllerLoopMode) (initializers 
 var _ ControllerInitializersFunc = NewControllerInitializers
 
 // KnownControllers returns all known controllers's name
+// 获取所有已知controller的名称
+// 确保在启动控制器时能够正确处理特殊控制器的依赖关系
 func KnownControllers() []string {
+	// 1.初始化controller集合
 	ret := sets.StringKeySet(NewControllerInitializers(IncludeCloudLoops))
 
+	// 2.添加特殊控制器
 	// add "special" controllers that aren't initialized normally.  These controllers cannot be initialized
 	// using a normal function.  The only known special case is the SA token controller which *must* be started
 	// first to ensure that the SA tokens for future controllers will exist.  Think very carefully before adding
@@ -390,6 +408,7 @@ func KnownControllers() []string {
 		saTokenControllerName,
 	)
 
+	// 3.返回控制器名称列表
 	return ret.List()
 }
 
@@ -405,6 +424,7 @@ const (
 
 // NewControllerInitializers is a public map of named controller groups (you can start more than one in an init func)
 // paired to their InitFunc.  This allows for structured downstream composition and subdivision.
+// 将所有controller进行统一管理, 增强了系统的模块化和扩展性
 func NewControllerInitializers(loopMode ControllerLoopMode) map[string]InitFunc {
 	controllers := map[string]InitFunc{}
 	controllers["endpoint"] = startEndpointController
