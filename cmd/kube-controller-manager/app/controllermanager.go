@@ -226,10 +226,12 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 			klog.Fatalf("error building controller context: %v", err)
 		}
 		controllerInitializers := initializersFunc(controllerContext.LoopMode)
+		// 启动注册的controller
 		if err := StartControllers(ctx, controllerContext, startSATokenController, controllerInitializers, unsecuredMux, healthzHandler); err != nil {
 			klog.Fatalf("error starting controllers: %v", err)
 		}
 
+		// informer，对k8s的资源进行监控
 		controllerContext.InformerFactory.Start(stopCh)
 		controllerContext.ObjectOrMetadataInformerFactory.Start(stopCh)
 		close(controllerContext.InformersStarted)
